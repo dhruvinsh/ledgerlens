@@ -1,0 +1,15 @@
+services:
+  ledgerlens:
+    build: .
+    image: ghcr.io/dshah/ledgerlens:latest
+    ports:
+      - "${LEDGERLENS_PORT:-8080}:80"
+    volumes:
+      - "${LEDGERLENS_DATA_DIR:-./data}:/app/data"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+      DATABASE_URL: "sqlite+aiosqlite:///app/data/ledgerlens.db"
+      CELERY_BROKER_URL: redis://localhost:6379/0
+    restart: unless-stopped
