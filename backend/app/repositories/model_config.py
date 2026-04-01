@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.model_config import ModelConfig
@@ -14,15 +14,18 @@ class ModelConfigRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_default_active(self) -> ModelConfig | None:
-        """Return the default active model, or the first active model if no default."""
+    async def get_active(self) -> ModelConfig | None:
+        """Return the single active model."""
         result = await self.db.execute(
-            select(ModelConfig)
-            .where(ModelConfig.is_active == True)  # noqa: E712
-            .order_by(ModelConfig.is_default.desc())
-            .limit(1)
+            select(ModelConfig).where(ModelConfig.is_active == True).limit(1)  # noqa: E712
         )
         return result.scalar_one_or_none()
+
+    async def deactivate_all(self) -> None:
+        """Set is_active=False on all models."""
+        await self.db.execute(
+            update(ModelConfig).values(is_active=False)
+        )
 
     async def list_all(self) -> list[ModelConfig]:
         result = await self.db.execute(

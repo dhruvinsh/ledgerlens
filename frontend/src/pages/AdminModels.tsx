@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Plus, Trash2, TestTube, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Trash2, TestTube, CheckCircle, XCircle, Power } from "lucide-react";
 import { useModels, useCreateModel, useUpdateModel, useDeleteModel, useTestModel } from "@/hooks/useAdmin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,13 +77,19 @@ export default function AdminModels() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05, duration: 0.2 }}
             >
-              <Card>
+              <Card className={mc.is_active ? "ring-2 ring-primary" : "opacity-70"}>
                 <CardContent className="flex items-center gap-4 py-4">
+                  <button
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${mc.is_active ? "bg-primary text-primary-foreground hover:bg-primary/80" : "bg-muted text-text-muted hover:bg-muted/80"}`}
+                    onClick={() => updateModel.mutate({ id: mc.id, is_active: !mc.is_active })}
+                    title={mc.is_active ? "Deactivate this model" : "Activate this model"}
+                  >
+                    <Power size={16} />
+                  </button>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{mc.name}</span>
                       {mc.is_active && <Badge variant="success">Active</Badge>}
-                      {mc.is_default && <Badge>Default</Badge>}
                     </div>
                     <p className="mt-1 text-xs text-text-muted">
                       {mc.provider_type} &middot; {mc.model_name} &middot; {mc.base_url}
@@ -100,15 +106,6 @@ export default function AdminModels() {
                     )}
                   </div>
                   <div className="flex gap-1">
-                    {!mc.is_active && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => updateModel.mutate({ id: mc.id, is_active: true })}
-                      >
-                        Enable
-                      </Button>
-                    )}
                     <Button
                       variant="ghost"
                       size="sm"

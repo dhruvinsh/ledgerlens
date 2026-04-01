@@ -125,7 +125,6 @@ export interface ModelConfig {
   base_url: string;
   model_name: string;
   is_active: boolean;
-  is_default: boolean;
   timeout_seconds: number;
   max_retries: number;
   health_status: string | null;

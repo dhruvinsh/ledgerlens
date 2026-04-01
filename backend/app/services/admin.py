@@ -27,6 +27,8 @@ class AdminService:
         return mc
 
     async def create_model(self, data: ModelConfigCreate) -> ModelConfig:
+        if data.is_active:
+            await self.repo.deactivate_all()
         mc = ModelConfig(
             name=data.name,
             provider_type=data.provider_type,
@@ -34,7 +36,6 @@ class AdminService:
             model_name=data.model_name,
             api_key_encrypted=data.api_key,  # TODO: encrypt in production
             is_active=data.is_active,
-            is_default=data.is_default,
             timeout_seconds=data.timeout_seconds,
             max_retries=data.max_retries,
         )
@@ -56,9 +57,9 @@ class AdminService:
         if data.api_key is not None:
             mc.api_key_encrypted = data.api_key
         if data.is_active is not None:
+            if data.is_active:
+                await self.repo.deactivate_all()
             mc.is_active = data.is_active
-        if data.is_default is not None:
-            mc.is_default = data.is_default
         if data.timeout_seconds is not None:
             mc.timeout_seconds = data.timeout_seconds
         if data.max_retries is not None:

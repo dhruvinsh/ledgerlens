@@ -22,7 +22,7 @@ async def enqueue_receipt(receipt_id: str, db: AsyncSession) -> ProcessingJob:
 
     # Attach the default active model config so the worker uses it
     mc_repo = ModelConfigRepository(db)
-    default_model = await mc_repo.get_default_active()
+    default_model = await mc_repo.get_active()
 
     job = ProcessingJob(
         id=str(uuid.uuid4()),
