@@ -3,7 +3,6 @@
 > [!CAUTION]
 > This project is a personal experiment, designed and built entirely around my own workflow and interests **fully** vibe-driven! If you want to contribute, I would love to have your help, as long as your changes don’t interfere with my own experience. Requests that do not disrupt my process are always welcome and appreciated.
 
-
 Self-hosted, privacy-first receipt tracking. Upload receipts, extract data with OCR + LLM, track prices, and manage household spending — all from a single Docker container.
 
 ## What It Does
@@ -63,18 +62,18 @@ ollama pull llama3.2
 
 Copy `.env.example` to `.env` and adjust as needed:
 
-| Variable | Default | Description |
-|---|---|---|
-| `SECRET_KEY` | `change-me` | **Change this.** Session signing key |
-| `LLM_BASE_URL` | `http://127.0.0.1:11434/v1` | LLM endpoint (Ollama, OpenAI, etc.) |
-| `LLM_MODEL` | `llama3.2` | Model name for receipt extraction |
-| `LLM_API_KEY` | — | API key (not needed for Ollama) |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./data/ledgerlens.db` | Database connection |
-| `FUZZY_AUTO_LINK_THRESHOLD` | `85` | Score above which items auto-link to products |
-| `FUZZY_SUGGEST_THRESHOLD` | `60` | Score above which a match suggestion is created |
-| `TESSERACT_LANG` | `eng` | OCR language pack |
-| `GOOGLE_CSE_API_KEY` | — | Optional: Google Custom Search for product images |
-| `GOOGLE_CSE_CX` | — | Optional: Google CSE engine ID |
+| Variable                    | Default                                    | Description                                       |
+| --------------------------- | ------------------------------------------ | ------------------------------------------------- |
+| `SECRET_KEY`                | `change-me`                                | **Change this.** Session signing key              |
+| `LLM_BASE_URL`              | `http://127.0.0.1:11434/v1`                | LLM endpoint (Ollama, OpenAI, etc.)               |
+| `LLM_MODEL`                 | `llama3.2`                                 | Model name for receipt extraction                 |
+| `LLM_API_KEY`               | —                                          | API key (not needed for Ollama)                   |
+| `DATABASE_URL`              | `sqlite+aiosqlite:///./data/ledgerlens.db` | Database connection                               |
+| `FUZZY_AUTO_LINK_THRESHOLD` | `85`                                       | Score above which items auto-link to products     |
+| `FUZZY_SUGGEST_THRESHOLD`   | `60`                                       | Score above which a match suggestion is created   |
+| `TESSERACT_LANG`            | `eng`                                      | OCR language pack                                 |
+| `GOOGLE_CSE_API_KEY`        | —                                          | Optional: Google Custom Search for product images |
+| `GOOGLE_CSE_CX`             | —                                          | Optional: Google CSE engine ID                    |
 
 See `.env.example` for the full list.
 
@@ -106,7 +105,7 @@ Single Docker container running four processes via Supervisor:
     └── products/
 ```
 
-**Backend**: Python 3.11, FastAPI, SQLAlchemy 2 (async), Alembic, Celery  
+**Backend**: Python 3.13, FastAPI, SQLAlchemy 2 (async), Alembic, Celery  
 **Frontend**: React 19, TypeScript, Vite, Tailwind CSS 4, TanStack Query, Zustand  
 **OCR**: Tesseract via pytesseract  
 **LLM**: OpenAI SDK (works with any compatible endpoint)
@@ -125,6 +124,7 @@ uv run uvicorn app.main:app --reload --port 8000
 ```
 
 In a separate terminal:
+
 ```bash
 cd backend
 uv run celery -A app.worker worker --pool=prefork --concurrency=1 --loglevel=info
@@ -168,16 +168,16 @@ bun run test
 
 ## Tech Stack
 
-| Layer | Technologies |
-|---|---|
-| Backend | Python 3.11, FastAPI, SQLAlchemy 2, Alembic, Celery, Redis |
-| Frontend | React 19, TypeScript 5.9, Vite 8, Tailwind CSS 4, TanStack Query 5, Zustand 5 |
-| OCR | Tesseract, PyMuPDF, Pillow |
-| LLM | OpenAI Python SDK (Ollama / vLLM / OpenAI) |
-| Matching | RapidFuzz |
-| Database | SQLite (default), PostgreSQL (optional) |
-| Infrastructure | Docker, Nginx, Supervisor |
-| CI/CD | GitHub Actions → GHCR |
+| Layer          | Technologies                                                                  |
+| -------------- | ----------------------------------------------------------------------------- |
+| Backend        | Python 3.13, FastAPI, SQLAlchemy 2, Alembic, Celery, Redis                    |
+| Frontend       | React 19, TypeScript 5.9, Vite 8, Tailwind CSS 4, TanStack Query 5, Zustand 5 |
+| OCR            | Tesseract, PyMuPDF, Pillow                                                    |
+| LLM            | OpenAI Python SDK (Ollama / vLLM / OpenAI)                                    |
+| Matching       | RapidFuzz                                                                     |
+| Database       | SQLite (default), PostgreSQL (optional)                                       |
+| Infrastructure | Docker, Nginx, Supervisor                                                     |
+| CI/CD          | GitHub Actions → GHCR                                                         |
 
 ## Data & Privacy
 

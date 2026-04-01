@@ -170,7 +170,7 @@ ledgerlens2/
 
 | Component | Technology | Version |
 |---|---|---|
-| Language | Python | 3.11+ |
+| Language | Python | 3.13+ |
 | Framework | FastAPI | 0.115+ |
 | Server | Uvicorn | 0.34 |
 | ORM | SQLAlchemy | 2.0+ (async) |
@@ -436,7 +436,7 @@ FROM oven/bun:1
 
 **Stage 2** — Final all-in-one image:
 ```
-FROM python:3.11-slim-bookworm
+FROM python:3.13-slim-bookworm
 → Install: tesseract-ocr, nginx, redis-server, supervisor
 → Install Python deps via uv (locked)
 → Copy backend, frontend dist, infra configs
