@@ -86,6 +86,6 @@ class ReceiptRepository:
     async def update(self, receipt: Receipt) -> None:
         await self.db.flush()
 
-    async def soft_delete(self, receipt: Receipt) -> None:
-        receipt.status = "deleted"
+    async def hard_delete(self, receipt: Receipt) -> None:
+        await self.db.delete(receipt)
         await self.db.flush()

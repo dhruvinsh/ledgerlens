@@ -149,9 +149,9 @@ class ReceiptService:
         receipt = await self.get_detail(receipt_id)
         self._require_owner(receipt)
 
-        await self.repo.soft_delete(receipt)
         if receipt.file_path:
             storage.delete_receipt_files(self.user.id, receipt.id)
+        await self.repo.hard_delete(receipt)
         await self.db.commit()
 
     def _require_owner(self, receipt: Receipt) -> None:

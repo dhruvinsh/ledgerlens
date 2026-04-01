@@ -100,9 +100,9 @@ async def test_delete_receipt(auth_client: httpx.AsyncClient):
     resp = await auth_client.delete(f"/api/v1/receipts/{receipt_id}")
     assert resp.status_code == 200
 
-    # Should now be "deleted" status
+    # Receipt should be permanently removed from database
     resp = await auth_client.get(f"/api/v1/receipts/{receipt_id}")
-    assert resp.json()["status"] == "deleted"
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
