@@ -33,6 +33,7 @@ from app.routers import (
     suggestions,
     ws,
 )
+from app.services.notifications import start_job_update_subscriber
 from app.services.retroactive_matching import start_retroactive_loop
 
 
@@ -45,12 +46,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         start_retroactive_loop(async_session_factory)
     )
 
+    # Start Redis → WebSocket bridge for real-time job updates
+    ws_bridge_task = asyncio.create_task(start_job_update_subscriber())
+
     yield
 
     # Shutdown
+    ws_bridge_task.cancel()
     retroactive_task.cancel()
     with suppress(asyncio.CancelledError):
         await retroactive_task
+    with suppress(asyncio.CancelledError):
+        await ws_bridge_task
 
 
 app = FastAPI(title="LedgerLens API", lifespan=lifespan)

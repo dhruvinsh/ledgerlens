@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { Outlet, NavLink } from "react-router";
 import {
   LayoutDashboard,
@@ -11,6 +11,8 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useJobNotifications } from "@/hooks/useJobNotifications";
+import { useJobUpdates } from "@/hooks/useProcessingJobs";
+import { wsService } from "@/services/websocket";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -23,6 +25,13 @@ const navItems = [
 
 export function AppShell() {
   useJobNotifications();
+  useJobUpdates();
+
+  // Connect WebSocket on mount (auth via httpOnly cookie)
+  useEffect(() => {
+    wsService.connect();
+    return () => wsService.disconnect();
+  }, []);
 
   return (
     <div className="flex h-screen">

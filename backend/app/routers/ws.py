@@ -78,9 +78,14 @@ async def _authenticate_ws(
 @router.websocket("/ws/jobs")
 async def websocket_jobs(
     websocket: WebSocket,
-    session_id: str = Query(...),
+    session_id: str | None = Query(default=None),
 ) -> None:
-    user_id = await _authenticate_ws(session_id, async_session_factory)
+    # Accept session_id from query param or cookie (cookie is preferred for httpOnly)
+    token = session_id or websocket.cookies.get("session_id")
+    if not token:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+    user_id = await _authenticate_ws(token, async_session_factory)
     if not user_id:
         await websocket.close(code=4001, reason="Unauthorized")
         return

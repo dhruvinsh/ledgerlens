@@ -16,13 +16,17 @@ export function useJobs(page = 1, per_page = 20) {
   });
 }
 
+/** Listens for WebSocket job updates and invalidates relevant queries. */
 export function useJobUpdates() {
   const qc = useQueryClient();
 
   useEffect(() => {
-    const unsubscribe = wsService.subscribe(() => {
-      qc.invalidateQueries({ queryKey: ["jobs"] });
-      qc.invalidateQueries({ queryKey: ["receipts"] });
+    const unsubscribe = wsService.subscribe((data) => {
+      if (data.type === "job_update") {
+        qc.invalidateQueries({ queryKey: ["jobs"] });
+        qc.invalidateQueries({ queryKey: ["receipts"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      }
     });
     return unsubscribe;
   }, [qc]);

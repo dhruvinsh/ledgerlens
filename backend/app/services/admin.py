@@ -59,6 +59,7 @@ class AdminService:
         if data.is_active is not None:
             if data.is_active:
                 await self.repo.deactivate_all()
+                self.db.expire(mc, ["is_active"])
             mc.is_active = data.is_active
         if data.timeout_seconds is not None:
             mc.timeout_seconds = data.timeout_seconds

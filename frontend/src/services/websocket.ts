@@ -1,41 +1,40 @@
-import type { ProcessingJob } from "@/lib/types";
-
-type JobHandler = (job: ProcessingJob) => void;
+type JobUpdateHandler = (data: Record<string, unknown>) => void;
 
 class WSService {
   private ws: WebSocket | null = null;
-  private handlers = new Set<JobHandler>();
+  private handlers = new Set<JobUpdateHandler>();
   private reconnectDelay = 1000;
   private maxReconnectDelay = 30000;
-  private sessionId: string | null = null;
+  private active = false;
 
-  connect(sessionId: string): void {
-    this.sessionId = sessionId;
+  connect(): void {
+    if (this.active) return;
+    this.active = true;
     this.doConnect();
   }
 
   disconnect(): void {
-    this.sessionId = null;
+    this.active = false;
     this.ws?.close();
     this.ws = null;
   }
 
-  subscribe(handler: JobHandler): () => void {
+  subscribe(handler: JobUpdateHandler): () => void {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
   }
 
   private doConnect(): void {
-    if (!this.sessionId) return;
+    if (!this.active) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/ws/jobs?session_id=${this.sessionId}`;
+    const url = `${protocol}//${window.location.host}/ws/jobs`;
 
     this.ws = new WebSocket(url);
 
     this.ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data as string) as ProcessingJob;
+        const data = JSON.parse(event.data as string) as Record<string, unknown>;
         for (const handler of this.handlers) {
           handler(data);
         }
@@ -45,7 +44,7 @@ class WSService {
     };
 
     this.ws.onclose = () => {
-      if (this.sessionId) {
+      if (this.active) {
         setTimeout(() => this.doConnect(), this.reconnectDelay);
         this.reconnectDelay = Math.min(
           this.reconnectDelay * 2,

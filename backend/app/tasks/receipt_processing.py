@@ -5,6 +5,8 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from app.worker import celery_app
 
+from app.services.notifications import publish_job_update
+
 logger = logging.getLogger(__name__)
 
 # Worker-local async engine and session factory, set on worker_process_init
@@ -42,6 +44,13 @@ def _get_session_factory():  # type: ignore[no-untyped-def]
                 cursor.close()
 
     return _session_factory
+
+
+def _notify(
+    user_id: str, job_id: str, status: str, receipt_id: str,
+    stage: str | None = None, error_message: str | None = None,
+) -> None:
+    publish_job_update(user_id, job_id, status, receipt_id, stage=stage, error_message=error_message)
 
 
 @celery_app.task(bind=True, name="process_receipt")
@@ -89,6 +98,8 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
         receipt.status = "processing"
         await db.commit()
 
+        _notify(receipt.user_id, job.id, "running", receipt.id, stage="ocr")
+
         try:
             # Resolve model config if set
             model_kwargs: dict = {}
@@ -135,6 +146,11 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
 
             await db.commit()
 
+            _notify(
+                receipt.user_id, job.id, "completed", receipt.id,
+                stage="done", error_message=job.error_message,
+            )
+
             logger.info(
                 "Receipt %s processed (source=%s)", receipt.id, receipt.extraction_source
             )
@@ -146,6 +162,7 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
             job.completed_at = utc_now()
             receipt.status = "failed"
             await db.commit()
+            _notify(receipt.user_id, job.id, "failed", receipt.id, error_message=job.error_message)
             raise
 
         except Exception as e:
@@ -155,4 +172,5 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
             job.completed_at = utc_now()
             receipt.status = "failed"
             await db.commit()
+            _notify(receipt.user_id, job.id, "failed", receipt.id, error_message=job.error_message)
             return {"status": "failed", "error": str(e)}
