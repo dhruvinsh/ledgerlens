@@ -10,6 +10,6 @@ services:
       - .env
     environment:
       DATA_DIR: /app/data
-      DATABASE_URL: "sqlite+aiosqlite:///app/data/ledgerlens.db"
+      DATABASE_URL: "sqlite+aiosqlite:////app/data/ledgerlens.db"
       CELERY_BROKER_URL: redis://localhost:6379/0
     restart: unless-stopped
