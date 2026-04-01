@@ -1,0 +1,105 @@
+@import "tailwindcss";
+@import "@fontsource/dm-serif-display/400.css";
+
+/*
+ * LedgerLens — "Ink & Ledger" Design System
+ *
+ * Satoshi font loaded via @font-face below (from Fontshare).
+ * DM Serif Display loaded via @fontsource package.
+ */
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/Satoshi-Variable.woff2") format("woff2");
+  font-weight: 300 900;
+  font-display: swap;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/fonts/Satoshi-VariableItalic.woff2") format("woff2");
+  font-weight: 300 900;
+  font-display: swap;
+  font-style: italic;
+}
+
+/* ── Theme tokens ── */
+
+@theme {
+  --font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "DM Serif Display", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-background: #fafaf7;
+  --color-surface: #ffffff;
+  --color-border: #e8e4df;
+  --color-text: #1c1917;
+  --color-text-muted: #78716c;
+
+  --color-accent: #b45309;
+  --color-accent-hover: #92400e;
+  --color-accent-foreground: #ffffff;
+
+  --color-success: #16a34a;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  --color-warning: #d97706;
+  --color-processing: #2563eb;
+
+  --color-sidebar: #f5f2ed;
+  --color-sidebar-foreground: #1c1917;
+
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+/* ── Dark mode overrides ── */
+
+.dark {
+  --color-background: #1a1816;
+  --color-surface: #252220;
+  --color-border: #3d3835;
+  --color-text: #f5f0eb;
+  --color-text-muted: #a8a29e;
+
+  --color-accent: #f59e0b;
+  --color-accent-hover: #fbbf24;
+  --color-accent-foreground: #1a1816;
+
+  --color-success: #22c55e;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #1a1816;
+  --color-warning: #fbbf24;
+  --color-processing: #60a5fa;
+
+  --color-sidebar: #151311;
+  --color-sidebar-foreground: #f5f0eb;
+}
+
+/* ── Base styles ── */
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+}
+
+/* Subtle paper texture overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='1' height='1' fill='%23000'/%3E%3C/svg%3E");
+  z-index: 9999;
+}
+
+#root {
+  min-height: 100svh;
+}
