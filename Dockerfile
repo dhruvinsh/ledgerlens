@@ -36,6 +36,8 @@ COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
 
 COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
 COPY infra/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+RUN mkdir -p /app/data
+
 COPY infra/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && rm -f /etc/nginx/sites-enabled/default
 
