@@ -4,6 +4,7 @@ from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.models.line_item import LineItem
 from app.models.receipt import Receipt
 from app.models.store import Store
 
@@ -15,7 +16,10 @@ class ReceiptRepository:
     async def get_by_id(self, receipt_id: str) -> Receipt | None:
         result = await self.db.execute(
             select(Receipt)
-            .options(joinedload(Receipt.store), joinedload(Receipt.line_items))
+            .options(
+                joinedload(Receipt.store),
+                joinedload(Receipt.line_items).subqueryload(LineItem.canonical_item),
+            )
             .where(Receipt.id == receipt_id)
         )
         return result.unique().scalar_one_or_none()
@@ -25,7 +29,10 @@ class ReceiptRepository:
     ) -> Receipt | None:
         result = await self.db.execute(
             select(Receipt)
-            .options(joinedload(Receipt.store), joinedload(Receipt.line_items))
+            .options(
+                joinedload(Receipt.store),
+                joinedload(Receipt.line_items).subqueryload(LineItem.canonical_item),
+            )
             .where(Receipt.id == receipt_id, visibility)
         )
         return result.unique().scalar_one_or_none()

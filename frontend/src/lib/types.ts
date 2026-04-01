@@ -62,10 +62,20 @@ export type ReceiptStatus =
   | "failed"
   | "deleted";
 
+export interface CanonicalItemSummary {
+  id: string;
+  name: string;
+  category: string | null;
+  aliases: string[];
+  product_url: string | null;
+  image_path: string | null;
+}
+
 export interface LineItem {
   id: string;
   receipt_id: string;
   canonical_item_id: string | null;
+  canonical_item: CanonicalItemSummary | null;
   name: string;
   quantity: number;
   unit_price: number | null;

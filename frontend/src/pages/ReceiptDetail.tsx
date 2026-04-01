@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
-import { ArrowLeft, RotateCw, Trash2, Pencil, Check, X, AlertTriangle } from "lucide-react";
+import { ArrowLeft, RotateCw, Trash2, AlertTriangle } from "lucide-react";
 import { useReceipt, useDeleteReceipt, useReprocessReceipt } from "@/hooks/useReceipts";
 import { useToastStore } from "@/stores/toastStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EnrichedLineItem } from "@/components/receipt/EnrichedLineItem";
+import { EditLineItemDialog } from "@/components/receipt/EditLineItemDialog";
 import { formatMoney } from "@/lib/money";
 import { api } from "@/services/api";
 import type { LineItem } from "@/lib/types";
@@ -19,14 +22,13 @@ export default function ReceiptDetail() {
   const deleteReceipt = useDeleteReceipt();
   const reprocess = useReprocessReceipt();
   const addToast = useToastStore((s) => s.addToast);
-  const [editingItem, setEditingItem] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<Record<string, string>>({});
+  const [editingItem, setEditingItem] = useState<LineItem | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   if (isLoading) return <Spinner className="mt-20" />;
   if (!receipt) return <p className="p-6 text-text-muted">Receipt not found.</p>;
 
   const handleDelete = async () => {
-    if (!confirm("Delete this receipt?")) return;
     await deleteReceipt.mutateAsync(receipt.id);
     navigate("/receipts");
   };
@@ -49,23 +51,13 @@ export default function ReceiptDetail() {
     }
   };
 
-  const startEditItem = (li: LineItem) => {
-    setEditingItem(li.id);
-    setEditValues({
-      name: li.name,
-      quantity: String(li.quantity),
-      total_price: li.total_price != null ? String(li.total_price / 100) : "",
-    });
-  };
-
-  const saveEditItem = async () => {
+  const handleSaveItem = async (values: {
+    name: string;
+    quantity: number;
+    total_price: number | null;
+  }) => {
     if (!editingItem) return;
-    const toCents = (v: string) => (v ? Math.round(parseFloat(v) * 100) : null);
-    await api.patch(`/line-items/${editingItem}`, {
-      name: editValues.name,
-      quantity: parseFloat(editValues.quantity) || 1,
-      total_price: toCents(editValues.total_price),
-    });
+    await api.patch(`/line-items/${editingItem.id}`, values);
     setEditingItem(null);
     refetch();
   };
@@ -130,45 +122,12 @@ export default function ReceiptDetail() {
           </CardHeader>
           <div className="divide-y divide-border">
             {(receipt.line_items ?? []).map((li) => (
-              <div key={li.id} className="flex items-center gap-3 px-5 py-3">
-                {editingItem === li.id ? (
-                  <>
-                    <input
-                      className="flex-1 rounded-sm border border-border bg-surface px-2 py-1 text-sm"
-                      value={editValues.name}
-                      onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
-                    />
-                    <input
-                      className="w-14 rounded-sm border border-border bg-surface px-2 py-1 text-right font-mono text-sm"
-                      value={editValues.quantity}
-                      onChange={(e) => setEditValues({ ...editValues, quantity: e.target.value })}
-                    />
-                    <input
-                      className="w-20 rounded-sm border border-border bg-surface px-2 py-1 text-right font-mono text-sm"
-                      value={editValues.total_price}
-                      onChange={(e) => setEditValues({ ...editValues, total_price: e.target.value })}
-                      placeholder="$"
-                    />
-                    <Button variant="ghost" size="icon" onClick={saveEditItem}>
-                      <Check size={16} className="text-success" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setEditingItem(null)}>
-                      <X size={16} className="text-text-muted" />
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm">{li.name}</span>
-                    <span className="text-xs text-text-muted">x{li.quantity}</span>
-                    <span className="w-20 text-right font-mono text-sm">
-                      {formatMoney(li.total_price, receipt.currency)}
-                    </span>
-                    <Button variant="ghost" size="icon" onClick={() => startEditItem(li)}>
-                      <Pencil size={14} className="text-text-muted" />
-                    </Button>
-                  </>
-                )}
-              </div>
+              <EnrichedLineItem
+                key={li.id}
+                item={li}
+                currency={receipt.currency}
+                onEdit={setEditingItem}
+              />
             ))}
             {(!receipt.line_items || receipt.line_items.length === 0) && (
               <p className="px-5 py-6 text-center text-sm text-text-muted">No line items</p>
@@ -183,7 +142,7 @@ export default function ReceiptDetail() {
               <RotateCw size={14} /> {reprocess.isPending ? "Reprocessing..." : "Reprocess"}
             </Button>
           )}
-          <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleteReceipt.isPending}>
+          <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)} disabled={deleteReceipt.isPending}>
             <Trash2 size={14} /> Delete
           </Button>
         </div>
@@ -209,6 +168,25 @@ export default function ReceiptDetail() {
           </Card>
         )}
       </motion.div>
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDelete}
+        title="Delete Receipt"
+        message="This will permanently delete the receipt and all its line items. This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleteReceipt.isPending}
+      />
+
+      {/* Edit dialog */}
+      <EditLineItemDialog
+        item={editingItem}
+        onSave={handleSaveItem}
+        onClose={() => setEditingItem(null)}
+      />
     </div>
   );
 }

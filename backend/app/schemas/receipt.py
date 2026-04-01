@@ -1,10 +1,22 @@
 from pydantic import BaseModel
 
 
+class CanonicalItemSummary(BaseModel):
+    id: str
+    name: str
+    category: str | None
+    aliases: list[str]
+    product_url: str | None
+    image_path: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class LineItemResponse(BaseModel):
     id: str
     receipt_id: str
     canonical_item_id: str | None
+    canonical_item: CanonicalItemSummary | None = None
     name: str
     quantity: float
     unit_price: int | None
