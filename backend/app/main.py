@@ -91,7 +91,9 @@ for router_module in [auth, receipts, items, stores, dashboard, household, admin
 # WebSocket (no /api/v1 prefix)
 app.include_router(ws.router)
 
-# Static files
+# Static files — ensure directory exists before mounting (runs at import time,
+# before lifespan which would otherwise create it too late)
+Path(settings.DATA_DIR).mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=settings.DATA_DIR), name="files")
 
 
