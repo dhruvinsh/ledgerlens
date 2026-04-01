@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { motion } from "motion/react";
 import {
   ExternalLink,
@@ -70,9 +71,19 @@ export function EnrichedLineItem({ item, currency, onEdit }: EnrichedLineItemPro
         {/* Name + meta */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium">
-              {hasEnrichment ? ci.name : item.name}
-            </span>
+            {item.canonical_item_id ? (
+              <Link
+                to={`/items/${item.canonical_item_id}`}
+                className="truncate text-sm font-medium text-text hover:text-accent transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {hasEnrichment ? ci.name : item.name}
+              </Link>
+            ) : (
+              <span className="truncate text-sm font-medium">
+                {item.name}
+              </span>
+            )}
             {hasEnrichment && ci.category && (
               <Badge variant="muted" className="hidden shrink-0 sm:inline-flex">
                 <Tag size={10} className="mr-1" />
@@ -82,7 +93,17 @@ export function EnrichedLineItem({ item, currency, onEdit }: EnrichedLineItemPro
           </div>
           {namesDiffer && (
             <p className="truncate text-xs text-text-muted">
-              <span className="font-mono opacity-60">{item.name}</span>
+              {item.canonical_item_id ? (
+                <Link
+                  to={`/items/${item.canonical_item_id}`}
+                  className="font-mono opacity-60 hover:opacity-100 transition-opacity"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {item.name}
+                </Link>
+              ) : (
+                <span className="font-mono opacity-60">{item.name}</span>
+              )}
             </p>
           )}
         </div>
