@@ -55,6 +55,27 @@ export function AppShell() {
       </aside>
 
       {/* Main content */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Top bar — mobile */}
+        <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 md:hidden">
+          <h1 className="font-serif text-lg tracking-tight text-foreground">
+            LedgerLens
+          </h1>
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              cn(
+                "rounded-md p-1.5 transition-colors",
+                isActive
+                  ? "text-accent"
+                  : "text-text-muted hover:text-text",
+              )
+            }
+          >
+            <Settings size={20} />
+          </NavLink>
+        </header>
+
       <main className="flex-1 overflow-y-auto">
         <Suspense
           fallback={
@@ -66,6 +87,8 @@ export function AppShell() {
           <Outlet />
         </Suspense>
       </main>
+
+      </div>
 
       {/* Tab bar — mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-border bg-surface md:hidden">
