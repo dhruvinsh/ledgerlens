@@ -69,7 +69,10 @@ Each item in line_items:
 }
 
 Rules for line items:
-- raw_name: Preserve the OCR text exactly as printed.
+- raw_name: The item name portion only, exactly as printed on the receipt. \
+Do NOT include prices, dollar amounts, tax code letters (H/G/P/F/J/D), \
+UPC/SKU barcodes, or quantity prefixes. Only the name text. \
+Example: "CLR MOULINT TP $6.72 J" → raw_name: "CLR MOULINT TP".
 - name: Expand common receipt abbreviations to full product names \
 (e.g. "GV 2% MLK 4L" → "Great Value 2% Milk 4L", "ORG BNA" → "Organic Banana"). \
 Use proper title case. If you recognise the product, use its full retail name.

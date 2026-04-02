@@ -323,7 +323,7 @@ ISO code (default `CAD`).
 
 | Column | Type | Notes |
 |---|---|---|
-| `score` | `Float` | 0.0–100.0 from fuzzy matching |
+| `confidence` | `Float` | 0.0–100.0 from fuzzy matching |
 | `status` | `String(20)` | `pending`, `accepted`, `rejected` |
 
 ---
@@ -661,7 +661,7 @@ Both run via `asyncio.to_thread` to avoid blocking the event loop.
 - **System prompt**: Comprehensive extraction instructions for:
   - **Store**: `raw_store_name` (verbatim OCR), `store_name` (cleaned), `store_address`, `store_chain`
   - **Receipt-level**: `transaction_date`, `currency`, `subtotal_cents`, `tax_cents`, `total_cents`, `discount_total_cents`, `payment_method`, `is_refund_receipt`, `tax_breakdown[]`
-  - **Line items**: `raw_name` (verbatim), `name` (cleaned), `quantity`, `unit_price_cents`, `total_price_cents`, `discount_cents`, `is_refund`, `tax_code`, `weight_qty`
+  - **Line items**: `raw_name` (item name portion only — no prices, tax codes, or barcodes), `name` (cleaned), `quantity`, `unit_price_cents`, `total_price_cents`, `discount_cents`, `is_refund`, `tax_code`, `weight_qty`
 - **Known-entity injection**: Before calling the LLM, the extraction pipeline passes known store names (up to 50) and known product names (up to 100) in the user message, enabling the LLM to match OCR-garbled text against existing entities
 - **JSON mode**: Attempts `response_format={"type": "json_object"}` first; retries without if unsupported
 - **Client**: OpenAI SDK pointed at configurable base_url (Ollama, vLLM, OpenAI, etc.)
@@ -685,6 +685,8 @@ Regex-based fallback when LLM fails:
 | < 60 | **No match**: create new `CanonicalItem` |
 
 Scoring: `max(token_sort_ratio, partial_ratio)` via RapidFuzz.
+
+**Auto-reject on rename**: When a user renames a canonical item (via `PATCH /items/:id`), `ItemService.update()` calls `MatchSuggestionRepository.reject_stale_for_canonical()`. This bulk-rejects any pending `MatchSuggestion` rows whose line item is already linked to that canonical item but the suggestion points to a different canonical item — preventing stale suggestions from silently overwriting user corrections.
 
 ### Normalisation
 

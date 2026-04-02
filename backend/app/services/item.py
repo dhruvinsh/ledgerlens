@@ -9,6 +9,7 @@ from app.models.match_suggestion import MatchSuggestion
 from app.models.receipt import Receipt
 from app.models.store import Store
 from app.repositories.canonical_item import CanonicalItemRepository
+from app.repositories.match_suggestion import MatchSuggestionRepository
 from app.schemas.item import CanonicalItemUpdate, PricePoint
 from app.services import storage
 
@@ -55,6 +56,8 @@ class ItemService:
             if old_name.lower() not in existing:
                 item.aliases = (item.aliases or []) + [old_name]
             item.name = data.name
+            suggestion_repo = MatchSuggestionRepository(self.db)
+            await suggestion_repo.reject_stale_for_canonical(item_id)
         if data.category is not None:
             item.category = data.category
         if data.product_url is not None:

@@ -1,8 +1,9 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.time import utc_now
+from app.models.line_item import LineItem
 from app.models.match_suggestion import MatchSuggestion
 
 
@@ -64,6 +65,30 @@ class MatchSuggestionRepository:
         suggestion.status = "rejected"
         suggestion.resolved_at = utc_now()
         await self.db.flush()
+
+    async def reject_stale_for_canonical(self, canonical_item_id: str) -> int:
+        """Bulk-reject pending suggestions whose line item is already linked to
+        `canonical_item_id` but the suggestion points to a different canonical item.
+
+        Called when a user renames a canonical item to ensure stale suggestions
+        can no longer override the confirmed linkage.
+        """
+        subq = (
+            select(LineItem.id)
+            .where(LineItem.canonical_item_id == canonical_item_id)
+            .scalar_subquery()
+        )
+        result = await self.db.execute(
+            update(MatchSuggestion)
+            .where(
+                MatchSuggestion.line_item_id.in_(subq),
+                MatchSuggestion.canonical_item_id != canonical_item_id,
+                MatchSuggestion.status == "pending",
+            )
+            .values(status="rejected", resolved_at=utc_now())
+        )
+        await self.db.flush()
+        return result.rowcount  # type: ignore[return-value]
 
     async def pending_count(self) -> int:
         from sqlalchemy import func
