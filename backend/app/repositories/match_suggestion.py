@@ -13,7 +13,10 @@ class MatchSuggestionRepository:
     async def get_by_id(self, suggestion_id: str) -> MatchSuggestion | None:
         result = await self.db.execute(
             select(MatchSuggestion)
-            .options(joinedload(MatchSuggestion.canonical_item))
+            .options(
+                joinedload(MatchSuggestion.canonical_item),
+                joinedload(MatchSuggestion.line_item),
+            )
             .where(MatchSuggestion.id == suggestion_id)
         )
         return result.unique().scalar_one_or_none()
@@ -29,7 +32,10 @@ class MatchSuggestionRepository:
         total = (await self.db.execute(count_q)).scalar() or 0
 
         query = (
-            base.options(joinedload(MatchSuggestion.canonical_item))
+            base.options(
+                joinedload(MatchSuggestion.canonical_item),
+                joinedload(MatchSuggestion.line_item),
+            )
             .order_by(MatchSuggestion.confidence.desc())
             .offset((page - 1) * per_page)
             .limit(per_page)
@@ -58,3 +64,13 @@ class MatchSuggestionRepository:
         suggestion.status = "rejected"
         suggestion.resolved_at = utc_now()
         await self.db.flush()
+
+    async def pending_count(self) -> int:
+        from sqlalchemy import func
+
+        result = await self.db.execute(
+            select(func.count())
+            .select_from(MatchSuggestion)
+            .where(MatchSuggestion.status == "pending")
+        )
+        return result.scalar() or 0

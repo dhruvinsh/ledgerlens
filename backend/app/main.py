@@ -29,6 +29,7 @@ from app.routers import (
     jobs,
     line_items,
     receipts,
+    review,
     stores,
     suggestions,
     ws,
@@ -92,7 +93,7 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
 
 
 # API Routers
-for router_module in [auth, receipts, items, stores, dashboard, household, admin, jobs, line_items, suggestions]:
+for router_module in [auth, receipts, items, stores, dashboard, household, admin, jobs, line_items, suggestions, review]:
     app.include_router(router_module.router, prefix="/api/v1")
 
 # WebSocket (no /api/v1 prefix)

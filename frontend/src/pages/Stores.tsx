@@ -41,29 +41,34 @@ export default function Stores() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.02, duration: 0.2 }}
               >
-                <Link to={`/stores/${store.id}`}>
+                <Link to={`/stores/${store.id}`} className="block">
                   <Card className="transition-colors hover:border-accent/30">
-                    <CardContent className="space-y-2 py-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2">
-                          <StoreIcon size={16} className="text-accent" />
-                          <span className="font-medium">{store.name}</span>
+                    <CardContent className="flex h-[116px] flex-col py-4">
+                      {/* Top: name + verified badge */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <StoreIcon size={16} className="shrink-0 text-accent" />
+                          <span className="truncate font-medium">{store.name}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {store.is_verified && <Badge variant="success">Verified</Badge>}
-                        </div>
+                        {store.is_verified && <Badge variant="success" className="shrink-0">Verified</Badge>}
                       </div>
-                      {store.address && (
-                        <div className="flex items-start gap-1.5 text-xs text-text-muted">
-                          <MapPin size={12} className="mt-0.5 shrink-0" />
-                          {store.address}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between">
-                        {store.chain && (
-                          <span className="text-xs text-text-muted">Chain: {store.chain}</span>
+
+                      {/* Middle: address — clamp to 2 lines, fills remaining space */}
+                      <div className="mt-1.5 min-h-0 flex-1">
+                        {store.address && (
+                          <div className="flex items-start gap-1.5 text-xs text-text-muted">
+                            <MapPin size={12} className="mt-0.5 shrink-0" />
+                            <span className="line-clamp-2">{store.address}</span>
+                          </div>
                         )}
-                        <div className="flex items-center gap-1 text-xs text-text-muted ml-auto">
+                      </div>
+
+                      {/* Bottom: chain + receipt count — always pinned to bottom */}
+                      <div className="mt-1.5 flex items-center justify-between">
+                        <span className="text-xs text-text-muted">
+                          {store.chain ? `Chain: ${store.chain}` : ""}
+                        </span>
+                        <div className="flex items-center gap-1 text-xs text-text-muted">
                           <Receipt size={11} />
                           {store.receipt_count}
                         </div>

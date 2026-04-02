@@ -3,6 +3,7 @@ import { Outlet, NavLink } from "react-router";
 import {
   LayoutDashboard,
   Receipt,
+  GitMerge,
   Package,
   TrendingUp,
   Store,
@@ -12,20 +13,26 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useJobNotifications } from "@/hooks/useJobNotifications";
 import { useJobUpdates } from "@/hooks/useProcessingJobs";
+import { useReviewCounts } from "@/hooks/useReview";
 import { wsService } from "@/services/websocket";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/receipts", label: "Receipts", icon: Receipt },
+  { to: "/review", label: "Review", icon: GitMerge },
   { to: "/items", label: "Products", icon: Package },
-  { to: "/price-tracker", label: "Prices", icon: TrendingUp },
   { to: "/stores", label: "Stores", icon: Store },
+  { to: "/price-tracker", label: "Prices", icon: TrendingUp },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppShell() {
   useJobNotifications();
   useJobUpdates();
+
+  const { data: counts } = useReviewCounts();
+  const reviewBadge =
+    (counts?.match_suggestions ?? 0) + (counts?.store_merges ?? 0);
 
   // Connect WebSocket on mount (auth via httpOnly cookie)
   useEffect(() => {
@@ -56,7 +63,14 @@ export function AppShell() {
                 )
               }
             >
-              <Icon size={18} />
+              <div className="relative">
+                <Icon size={18} />
+                {to === "/review" && reviewBadge > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-white">
+                    {reviewBadge > 99 ? "99+" : reviewBadge}
+                  </span>
+                )}
+              </div>
               {label}
             </NavLink>
           ))}
@@ -112,7 +126,14 @@ export function AppShell() {
               )
             }
           >
-            <Icon size={20} />
+            <div className="relative">
+              <Icon size={20} />
+              {to === "/review" && reviewBadge > 0 && (
+                <span className="absolute -right-2 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 text-[8px] font-bold text-white">
+                  {reviewBadge > 99 ? "99+" : reviewBadge}
+                </span>
+              )}
+            </div>
             {label}
           </NavLink>
         ))}

@@ -1,15 +1,25 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Search } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { useItems, useItemPrices } from "@/hooks/useItems";
+import { useItems, useItem, useItemPrices } from "@/hooks/useItems";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { formatMoney } from "@/lib/money";
 
 export default function PriceTracker() {
+  const [searchParams] = useSearchParams();
+  const initialItemId = searchParams.get("item");
+
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialItemId);
+
+  // Pre-fill search box when arriving via ?item= deep link
+  const { data: linkedItem } = useItem(initialItemId ?? undefined);
+  if (linkedItem && !search && selectedId === initialItemId) {
+    setSearch(linkedItem.name);
+  }
   const { data: items } = useItems({ search: search || undefined, per_page: 10 });
   const { data: priceData, isLoading: loadingPrices } = useItemPrices(selectedId ?? undefined);
 

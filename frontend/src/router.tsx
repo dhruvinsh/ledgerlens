@@ -13,6 +13,7 @@ const ReceiptDetail = lazy(() => import("@/pages/ReceiptDetail"));
 const Items = lazy(() => import("@/pages/Items"));
 const ProductDetail = lazy(() => import("@/pages/ProductDetail"));
 const PriceTracker = lazy(() => import("@/pages/PriceTracker"));
+const Review = lazy(() => import("@/pages/Review"));
 const Stores = lazy(() => import("@/pages/Stores"));
 const StoreDetail = lazy(() => import("@/pages/StoreDetail"));
 const Settings = lazy(() => import("@/pages/Settings"));
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
           { path: "/receipts/add", element: <AddReceipt /> },
           { path: "/receipts/manual", element: <ManualEntry /> },
           { path: "/receipts/:id", element: <ReceiptDetail /> },
+          { path: "/review", element: <Review /> },
           { path: "/items", element: <Items /> },
           { path: "/items/:id", element: <ProductDetail /> },
           { path: "/price-tracker", element: <PriceTracker /> },

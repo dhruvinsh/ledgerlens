@@ -58,6 +58,18 @@ export function useAddStoreAlias() {
   });
 }
 
+export function useMergeStore() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, duplicate_ids }: { id: string; duplicate_ids: string[] }) =>
+      api.post<Store>(`/stores/${id}/merge`, { duplicate_ids }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stores"] });
+      qc.invalidateQueries({ queryKey: ["review-counts"] });
+    },
+  });
+}
+
 export function useRemoveStoreAlias() {
   const qc = useQueryClient();
   return useMutation({

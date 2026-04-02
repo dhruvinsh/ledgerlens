@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
-import { ArrowLeft, Trash2, Upload, ImageOff, X, Plus } from "lucide-react";
-import { useItem, useUpdateItem, useDeleteItem, useUploadItemImage, useDeleteItemImage, useFetchItemImage } from "@/hooks/useItems";
+import { ArrowLeft, Trash2, GitMerge, TrendingUp, MoreHorizontal, Upload, ImageOff, X, Plus } from "lucide-react";
+import { useItem, useUpdateItem, useDeleteItem, useUploadItemImage, useDeleteItemImage, useFetchItemImage, useMergeItem } from "@/hooks/useItems";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { MergeDialog } from "@/components/ui/merge-dialog";
+import { useToastStore } from "@/stores/toastStore";
+import { api } from "@/services/api";
+import type { CanonicalItem, PaginatedResponse } from "@/lib/types";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -17,12 +22,37 @@ export default function ProductDetail() {
   const uploadImage = useUploadItemImage();
   const deleteImage = useDeleteItemImage();
   const fetchImage = useFetchItemImage();
+  const mergeItem = useMergeItem();
+  const addToast = useToastStore((s) => s.addToast);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [newAlias, setNewAlias] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showMoreMenu]);
+
+  const searchItems = useCallback(async (query: string): Promise<CanonicalItem[]> => {
+    const res = await api.get<PaginatedResponse<CanonicalItem>>("/items", {
+      search: query,
+      per_page: "10",
+    });
+    return res.items.filter((i) => i.id !== id);
+  }, [id]);
 
   // Sync form state when item loads
   if (item && !dirty) {
@@ -68,6 +98,25 @@ export default function ProductDetail() {
     refetch();
   };
 
+  const handleDelete = async () => {
+    await deleteItem.mutateAsync(item.id);
+    navigate("/items");
+  };
+
+  const handleMerge = async (selectedId: string) => {
+    try {
+      await mergeItem.mutateAsync({ id: item.id, duplicate_ids: [selectedId] });
+      addToast({ type: "success", title: "Product merged successfully" });
+      setShowMerge(false);
+      refetch();
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: err instanceof Error ? err.message : "Failed to merge product",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6 p-6 pb-24 md:pb-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
@@ -75,16 +124,37 @@ export default function ProductDetail() {
           <Button variant="ghost" size="icon" onClick={() => navigate("/items")}>
             <ArrowLeft size={18} />
           </Button>
-          <h1 className="flex-1 font-serif text-2xl">{item.name}</h1>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={async () => {
-              if (!confirm("Delete this product?")) return;
-              await deleteItem.mutateAsync(item.id);
-              navigate("/items");
-            }}
-          >
+          <h1 className="min-w-0 flex-1 truncate font-serif text-2xl" title={item.name}>
+            {item.name}
+          </h1>
+          {/* More actions dropdown */}
+          <div className="relative shrink-0" ref={moreMenuRef}>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setShowMoreMenu((v) => !v)}
+              aria-label="More actions"
+            >
+              <MoreHorizontal size={16} />
+            </Button>
+            {showMoreMenu && (
+              <div className="absolute right-0 top-full z-20 mt-1.5 min-w-36 rounded-sm border border-border bg-surface py-1 shadow-lg">
+                <button
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-accent/5"
+                  onClick={() => { setShowMoreMenu(false); navigate(`/price-tracker?item=${item.id}`); }}
+                >
+                  <TrendingUp size={14} className="text-text-muted" /> Prices
+                </button>
+                <button
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-accent/5"
+                  onClick={() => { setShowMoreMenu(false); setShowMerge(true); }}
+                >
+                  <GitMerge size={14} className="text-text-muted" /> Merge
+                </button>
+              </div>
+            )}
+          </div>
+          <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setShowDelete(true)}>
             <Trash2 size={14} /> Delete
           </Button>
         </div>
@@ -170,6 +240,41 @@ export default function ProductDetail() {
           </Card>
         </div>
       </motion.div>
+
+      <ConfirmDialog
+        open={showDelete}
+        onClose={() => setShowDelete(false)}
+        onConfirm={handleDelete}
+        title="Delete Product"
+        message="Are you sure you want to delete this product? This cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleteItem.isPending}
+      />
+
+      <MergeDialog<CanonicalItem>
+        open={showMerge}
+        onClose={() => setShowMerge(false)}
+        onConfirm={handleMerge}
+        title="Merge Product"
+        searchPlaceholder="Search for product to merge..."
+        searchFn={searchItems}
+        renderItem={(i) => (
+          <div className="flex items-center gap-2">
+            {i.image_path ? (
+              <img src={`/files/${i.image_path}`} alt={i.name} className="h-6 w-6 rounded-sm object-cover" />
+            ) : (
+              <div className="h-6 w-6 rounded-sm bg-accent/10" />
+            )}
+            <span className="font-medium">{i.name}</span>
+            {i.category && <span className="text-xs text-text-muted">{i.category}</span>}
+          </div>
+        )}
+        getId={(i) => i.id}
+        getName={(i) => i.name}
+        currentName={item.name}
+        loading={mergeItem.isPending}
+      />
     </div>
   );
 }

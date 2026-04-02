@@ -1,10 +1,11 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import ItemNotFoundError
+from app.core.exceptions import ItemNotFoundError, ValidationError
 from app.models.canonical_item import CanonicalItem
 from app.models.line_item import LineItem
+from app.models.match_suggestion import MatchSuggestion
 from app.models.receipt import Receipt
 from app.models.store import Store
 from app.repositories.canonical_item import CanonicalItemRepository
@@ -71,6 +72,58 @@ class ItemService:
             storage.delete_product_image(item.id)
         await self.db.delete(item)
         await self.db.commit()
+
+    async def merge_items(
+        self, canonical_id: str, duplicate_ids: list[str]
+    ) -> CanonicalItem:
+        canonical = await self.get_by_id(canonical_id)
+
+        for dup_id in duplicate_ids:
+            if dup_id == canonical_id:
+                raise ValidationError("Cannot merge an item into itself")
+
+            dup = await self.get_by_id(dup_id)
+
+            # Reassign all line items from duplicate to canonical
+            await self.db.execute(
+                update(LineItem)
+                .where(LineItem.canonical_item_id == dup_id)
+                .values(canonical_item_id=canonical_id)
+            )
+
+            # Union aliases: dup's aliases + dup's name → canonical's aliases
+            existing = [a.lower() for a in (canonical.aliases or [])]
+            new_aliases = list(canonical.aliases or [])
+            for alias in (dup.aliases or []) + [dup.name]:
+                if alias.lower() not in existing and alias.lower() != canonical.name.lower():
+                    new_aliases.append(alias)
+                    existing.append(alias.lower())
+            canonical.aliases = new_aliases
+
+            # Adopt category if canonical lacks one
+            if not canonical.category and dup.category:
+                canonical.category = dup.category
+
+            # Adopt image if canonical lacks one
+            if not canonical.image_path and dup.image_path:
+                canonical.image_path = dup.image_path
+                canonical.image_source = dup.image_source
+                canonical.image_fetch_status = dup.image_fetch_status
+
+            # Delete all match suggestions referencing the duplicate
+            await self.db.execute(
+                delete(MatchSuggestion).where(
+                    MatchSuggestion.canonical_item_id == dup_id
+                )
+            )
+
+            # Hard-delete the duplicate (image cleanup only if we didn't adopt it)
+            if dup.image_path and dup.image_path != canonical.image_path:
+                storage.delete_product_image(dup.id)
+            await self.db.delete(dup)
+
+        await self.db.flush()
+        return canonical
 
     async def upload_image(
         self, item_id: str, file_content: bytes, filename: str

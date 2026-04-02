@@ -68,17 +68,20 @@ async def list_merge_suggestions(
 ) -> PaginatedResponse[StoreMergeSuggestionResponse]:
     svc = StoreService(db)
     suggestions, total = await svc.suggestion_repo.list_pending(page, per_page)
-    items = [
-        StoreMergeSuggestionResponse(
-            id=s.id,
-            store_a=_to_response(s.store_a),
-            store_b=_to_response(s.store_b),
-            confidence=s.confidence,
-            status=s.status,
-            created_at=s.created_at.isoformat(),
+    items = []
+    for s in suggestions:
+        count_a = await svc.get_receipt_count(s.store_a.id)
+        count_b = await svc.get_receipt_count(s.store_b.id)
+        items.append(
+            StoreMergeSuggestionResponse(
+                id=s.id,
+                store_a=_to_response(s.store_a, count_a),
+                store_b=_to_response(s.store_b, count_b),
+                confidence=s.confidence,
+                status=s.status,
+                created_at=s.created_at.isoformat(),
+            )
         )
-        for s in suggestions
-    ]
     return PaginatedResponse(items=items, total=total, page=page, per_page=per_page)
 
 

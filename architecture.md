@@ -146,7 +146,7 @@ ledgerlens2/
 │   │   │   └── ui/                    # Card, Button, Input, Dialog, Badge, etc.
 │   │   ├── hooks/                     # TanStack Query hooks (8 modules)
 │   │   ├── lib/                       # types.ts, utils.ts, money.ts
-│   │   ├── pages/                     # 16 page components
+│   │   ├── pages/                     # 17 page components
 │   │   ├── services/                  # api.ts, websocket.ts
 │   │   └── stores/                    # appStore.ts, toastStore.ts (Zustand)
 │   ├── index.html
@@ -412,6 +412,7 @@ serialise responses via Pydantic schemas. No business logic lives here.
     /price-tracker
     /stores
     /stores/:id
+    /review
     /settings
     /settings/household
     /admin/models
@@ -419,6 +420,14 @@ serialise responses via Pydantic schemas. No business logic lives here.
 ```
 
 All page components are lazy-loaded via `React.lazy`.
+
+### Navigation
+
+**Desktop sidebar** (7 items): Dashboard, Receipts, Review, Products, Stores, Prices, Settings
+
+**Mobile bottom tab bar** (5 items, `navItems.slice(0, 5)`): Dashboard, Receipts, Review, Products, Stores. Prices is accessible from ProductDetail via deep link (`/price-tracker?item={id}`). Settings has a gear icon in the mobile header bar.
+
+**Review badge**: `useReviewCounts()` polls `GET /review/counts` every 60s (admin-only, gated by `user.role`). Combined pending count rendered as accent-colored pill on the Review nav icon in both sidebar and tab bar.
 
 ### State Management
 
@@ -444,7 +453,7 @@ A `fetch`-based wrapper that:
 - Parses incoming `ProcessingJob` state updates
 - `useJobNotifications` hook subscribes and invalidates TanStack Query caches
 
-### Pages (16)
+### Pages (17)
 
 | Route | Page | Description |
 |---|---|---|
@@ -456,10 +465,11 @@ A `fetch`-based wrapper that:
 | `/receipts/manual` | ManualEntry | Manual receipt form |
 | `/receipts/:id` | ReceiptDetail | Receipt viewer with editable line items |
 | `/items` | Items | Paginated product list with search |
-| `/items/:id` | ProductDetail | Edit product, aliases, image, match suggestions |
-| `/price-tracker` | PriceTracker | Price history chart + table |
+| `/items/:id` | ProductDetail | Edit product, aliases, image, merge, price history link |
+| `/price-tracker` | PriceTracker | Price history chart + table (supports `?item=` deep link) |
 | `/stores` | Stores | Store cards with receipt counts, links to detail |
-| `/stores/:id` | StoreDetail | Edit store name/address/chain, manage aliases, delete |
+| `/stores/:id` | StoreDetail | Edit store name/address/chain, manage aliases, merge, delete |
+| `/review` | Review | Admin: product match suggestions + store duplicate suggestions, batch ops |
 | `/settings` | Settings | Profile, links to household/admin |
 | `/settings/household` | HouseholdSettings | Create/edit household, invite, members |
 | `/admin/models` | AdminModels | LLM model config CRUD |
@@ -553,6 +563,7 @@ All endpoints under `/api/v1`. Auth via `session_id` cookie (httpOnly, sameSite=
 | **Items** | GET | `/items` | List canonical items + pagination |
 | | GET | `/items/:id` | Product detail |
 | | PATCH | `/items/:id` | Update product |
+| | POST | `/items/:id/merge` | Merge duplicate items into this one |
 | | GET | `/items/:id/price-history` | Historical pricing |
 | | GET | `/items/:id/images` | Product images |
 | **Line Items** | PATCH | `/line-items/:id` | Edit/correct line item |
@@ -569,9 +580,10 @@ All endpoints under `/api/v1`. Auth via `session_id` cookie (httpOnly, sameSite=
 | | POST | `/stores/merge-suggestions/:id/accept` | Accept + execute merge |
 | | POST | `/stores/merge-suggestions/:id/reject` | Dismiss suggestion |
 | | POST | `/stores/scan-duplicates` | Trigger on-demand duplicate scan |
-| **Suggestions** | GET | `/suggestions` | Match suggestions |
+| **Suggestions** | GET | `/suggestions` | Match suggestions (enriched with line item name) |
 | | POST | `/suggestions/:id/accept` | Accept + link |
 | | POST | `/suggestions/:id/reject` | Reject suggestion |
+| **Review** | GET | `/review/counts` | Combined pending counts (admin) |
 | **Dashboard** | GET | `/dashboard` | Summary (totals, trends, top items) |
 | | GET | `/dashboard/stats` | Detailed statistics |
 | **Household** | POST | `/household` | Create household |

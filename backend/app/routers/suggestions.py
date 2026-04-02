@@ -32,6 +32,8 @@ def _to_response(s) -> MatchSuggestionResponse:  # type: ignore[no-untyped-def]
     return MatchSuggestionResponse(
         id=s.id,
         line_item_id=s.line_item_id,
+        line_item_name=s.line_item.name if s.line_item else None,
+        line_item_raw_name=s.line_item.raw_name if s.line_item else None,
         canonical_item_id=s.canonical_item_id,
         canonical_item=ci,
         confidence=s.confidence,

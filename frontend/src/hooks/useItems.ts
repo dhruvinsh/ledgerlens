@@ -70,6 +70,18 @@ export function useDeleteItemImage() {
   });
 }
 
+export function useMergeItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, duplicate_ids }: { id: string; duplicate_ids: string[] }) =>
+      api.post<CanonicalItem>(`/items/${id}/merge`, { duplicate_ids }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["review-counts"] });
+    },
+  });
+}
+
 export function useFetchItemImage() {
   const qc = useQueryClient();
   return useMutation({

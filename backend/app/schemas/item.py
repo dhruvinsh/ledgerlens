@@ -22,6 +22,10 @@ class CanonicalItemUpdate(BaseModel):
     aliases: list[str] | None = None
 
 
+class ItemMergeRequest(BaseModel):
+    duplicate_ids: list[str]
+
+
 class PricePoint(BaseModel):
     date: str
     price: int

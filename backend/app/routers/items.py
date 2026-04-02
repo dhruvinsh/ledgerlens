@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_admin
 from app.models.user import User
 from app.schemas.item import (
     CanonicalItemResponse,
     CanonicalItemUpdate,
+    ItemMergeRequest,
     PriceHistoryResponse,
 )
 from app.schemas.pagination import PaginatedResponse
@@ -97,6 +98,19 @@ async def delete_item(
     svc = ItemService(db)
     await svc.delete(item_id)
     return {"detail": "Item deleted"}
+
+
+@router.post("/{item_id}/merge", response_model=CanonicalItemResponse)
+async def merge_items(
+    item_id: str,
+    body: ItemMergeRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> CanonicalItemResponse:
+    svc = ItemService(db)
+    item = await svc.merge_items(item_id, body.duplicate_ids)
+    await db.commit()
+    return _to_response(item)
 
 
 @router.post("/{item_id}/image", response_model=CanonicalItemResponse)

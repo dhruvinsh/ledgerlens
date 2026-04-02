@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
 import {
   ArrowLeft,
   Trash2,
+  GitMerge,
   X,
   Plus,
   MapPin,
@@ -15,6 +16,7 @@ import {
   useStore,
   useUpdateStore,
   useDeleteStore,
+  useMergeStore,
   useStoreAliases,
   useAddStoreAlias,
   useRemoveStoreAlias,
@@ -25,6 +27,10 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { MergeDialog } from "@/components/ui/merge-dialog";
+import { useToastStore } from "@/stores/toastStore";
+import { api } from "@/services/api";
+import type { PaginatedResponse, Store } from "@/lib/types";
 
 export default function StoreDetail() {
   const { id } = useParams();
@@ -35,6 +41,8 @@ export default function StoreDetail() {
   const deleteStore = useDeleteStore();
   const addAlias = useAddStoreAlias();
   const removeAlias = useRemoveStoreAlias();
+  const mergeStore = useMergeStore();
+  const addToast = useToastStore((s) => s.addToast);
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -43,6 +51,7 @@ export default function StoreDetail() {
   const [dirty, setDirty] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [showMerge, setShowMerge] = useState(false);
 
   // Sync form state when store loads
   if (store && !dirty) {
@@ -87,6 +96,29 @@ export default function StoreDetail() {
     refetch();
   };
 
+  const handleMerge = async (selectedId: string) => {
+    try {
+      await mergeStore.mutateAsync({ id: store.id, duplicate_ids: [selectedId] });
+      addToast({ type: "success", title: "Store merged successfully" });
+      setShowMerge(false);
+      refetch();
+      refetchAliases();
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: err instanceof Error ? err.message : "Failed to merge store",
+      });
+    }
+  };
+
+  const searchStores = useCallback(async (query: string): Promise<Store[]> => {
+    const res = await api.get<PaginatedResponse<Store>>("/stores", {
+      search: query,
+      per_page: "10",
+    });
+    return res.items.filter((s) => s.id !== store.id);
+  }, [store.id]);
+
   const handleDelete = async () => {
     try {
       setDeleteError("");
@@ -105,6 +137,9 @@ export default function StoreDetail() {
             <ArrowLeft size={18} />
           </Button>
           <h1 className="flex-1 font-serif text-2xl">{store.name}</h1>
+          <Button variant="outline" size="sm" onClick={() => setShowMerge(true)}>
+            <GitMerge size={14} /> Merge
+          </Button>
           <Button variant="destructive" size="sm" onClick={() => setShowDelete(true)}>
             <Trash2 size={14} /> Delete
           </Button>
@@ -265,6 +300,30 @@ export default function StoreDetail() {
         confirmLabel={store.receipt_count > 0 ? "Cannot Delete" : "Delete"}
         variant="destructive"
         loading={deleteStore.isPending}
+      />
+
+      <MergeDialog<Store>
+        open={showMerge}
+        onClose={() => setShowMerge(false)}
+        onConfirm={handleMerge}
+        title="Merge Store"
+        searchPlaceholder="Search for store to merge..."
+        searchFn={searchStores}
+        renderItem={(s) => (
+          <div>
+            <span className="font-medium">{s.name}</span>
+            {s.address && (
+              <span className="ml-2 text-xs text-text-muted">{s.address}</span>
+            )}
+            <span className="ml-2 text-xs text-text-muted">
+              ({s.receipt_count} receipts)
+            </span>
+          </div>
+        )}
+        getId={(s) => s.id}
+        getName={(s) => s.name}
+        currentName={store.name}
+        loading={mergeStore.isPending}
       />
     </div>
   );

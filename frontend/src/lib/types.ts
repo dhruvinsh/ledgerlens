@@ -111,11 +111,27 @@ export interface CanonicalItem {
 export interface MatchSuggestion {
   id: string;
   line_item_id: string;
+  line_item_name: string | null;
+  line_item_raw_name: string | null;
   canonical_item_id: string;
   canonical_item: CanonicalItem;
   confidence: number;
   status: "pending" | "accepted" | "rejected";
   created_at: string;
+}
+
+export interface StoreMergeSuggestion {
+  id: string;
+  store_a: Store;
+  store_b: Store;
+  confidence: number;
+  status: string;
+  created_at: string;
+}
+
+export interface ReviewCounts {
+  match_suggestions: number;
+  store_merges: number;
 }
 
 export interface ProcessingJob {
