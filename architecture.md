@@ -87,12 +87,15 @@ ledgerlens2/
 │   │   │   └── model_config.py
 │   │   ├── schemas/                   # Pydantic request/response models
 │   │   ├── repositories/             # Data access layer (one per model)
+│   │   ├── prompts/                  # Jinja2 LLM prompt templates
+│   │   │   ├── system.md.j2          # System prompt (extraction instructions)
+│   │   │   └── user.md.j2            # User message (OCR text + known entities)
 │   │   ├── services/                 # Business logic layer
 │   │   │   ├── auth.py               # login, register, session lifecycle
 │   │   │   ├── receipt.py            # upload, manual create, update, delete, list
 │   │   │   ├── extraction.py         # orchestrate OCR → LLM/heuristic → persist
 │   │   │   ├── ocr.py                # Tesseract wrapper + PDF handler
-│   │   │   ├── llm.py                # OpenAI-compatible chat extraction
+│   │   │   ├── llm.py                # OpenAI-compatible chat extraction (renders Jinja2 templates)
 │   │   │   ├── heuristic.py          # Regex-based receipt parser
 │   │   │   ├── normalization.py      # Store name / item name normalisation
 │   │   │   ├── matching.py           # Fuzzy match engine (rapidfuzz)
@@ -185,6 +188,7 @@ ledgerlens2/
 | Image processing | Pillow | 11.0+ |
 | LLM client | OpenAI Python SDK | 1.60+ |
 | Fuzzy matching | RapidFuzz | 3.14+ |
+| Prompt templates | Jinja2 | 3.1+ |
 | Task queue | Celery | 5.4+ |
 | Broker | Redis | 5.0+ (embedded) |
 | Auth tokens | itsdangerous | 2.2+ |
@@ -658,10 +662,17 @@ Both run via `asyncio.to_thread` to avoid blocking the event loop.
 
 ### LLM Service
 
-- **System prompt**: Comprehensive extraction instructions for:
-  - **Store**: `raw_store_name` (verbatim OCR), `store_name` (cleaned), `store_address`, `store_chain`
+Prompts are **Jinja2 templates** stored in `app/prompts/` and rendered at module load time
+(system prompt) or per-request (user prompt). This separates prompt content from Python code,
+making it easy to iterate on extraction instructions without touching service logic.
+
+- **Templates**: `system.md.j2` (static, rendered once), `user.md.j2` (per-request with `raw_text`, `known_stores`, `known_products`)
+- **System prompt** covers:
+  - **OCR awareness**: Instructs the LLM that input is OCR text with garbled characters, and to read the entire receipt before extracting any field
+  - **Store identification**: Cross-reference the full receipt (loyalty cards, URLs, transaction headers, product prefixes, footer text) to resolve the true store name — the header/logo area is the most OCR-error-prone region
+  - **Store fields**: `raw_store_name` (verbatim OCR), `store_name` (cleaned via full-receipt analysis), `store_address`, `store_chain`
   - **Receipt-level**: `transaction_date`, `currency`, `subtotal_cents`, `tax_cents`, `total_cents`, `discount_total_cents`, `payment_method`, `is_refund_receipt`, `tax_breakdown[]`
-  - **Line items**: `raw_name` (item name portion only — no prices, tax codes, or barcodes), `name` (cleaned), `quantity`, `unit_price_cents`, `total_price_cents`, `discount_cents`, `is_refund`, `tax_code`, `weight_qty`
+  - **Line items**: `raw_name` (item name portion only — no prices, tax codes, or barcodes), `name` (cleaned, store-context-aware expansions), `quantity`, `unit_price_cents`, `total_price_cents`, `discount_cents`, `is_refund`, `tax_code`, `weight_qty`
 - **Known-entity injection**: Before calling the LLM, the extraction pipeline passes known store names (up to 50) and known product names (up to 100) in the user message, enabling the LLM to match OCR-garbled text against existing entities
 - **JSON mode**: Attempts `response_format={"type": "json_object"}` first; retries without if unsupported
 - **Client**: OpenAI SDK pointed at configurable base_url (Ollama, vLLM, OpenAI, etc.)
