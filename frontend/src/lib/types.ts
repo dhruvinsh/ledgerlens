@@ -27,6 +27,17 @@ export interface Store {
   latitude: number | null;
   longitude: number | null;
   is_verified: boolean;
+  merged_into_id: string | null;
+  aliases: string[];
+  receipt_count: number;
+  created_at: string;
+}
+
+export interface StoreAlias {
+  id: string;
+  store_id: string;
+  alias_name: string;
+  source: string;
   created_at: string;
 }
 

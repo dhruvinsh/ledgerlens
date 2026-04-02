@@ -39,6 +39,12 @@ class StoreService:
             raise StoreNotFoundError(f"Store {store_id} not found")
         return store
 
+    async def get_receipt_count(self, store_id: str) -> int:
+        result = await self.db.execute(
+            select(func.count()).where(Receipt.store_id == store_id)
+        )
+        return result.scalar() or 0
+
     async def list_stores(
         self,
         search: str | None = None,
@@ -84,9 +90,9 @@ class StoreService:
         if data.name is not None:
             store.name = data.name
         if data.address is not None:
-            store.address = data.address
+            store.address = data.address or None
         if data.chain is not None:
-            store.chain = data.chain
+            store.chain = data.chain or None
         if data.latitude is not None:
             store.latitude = data.latitude
         if data.longitude is not None:
@@ -102,7 +108,7 @@ class StoreService:
         self,
         canonical_id: str,
         duplicate_ids: list[str],
-        user_id: str,
+        user_id: str,  # noqa: ARG002
     ) -> Store:
         """Merge duplicate stores into the canonical store.
 
@@ -181,6 +187,23 @@ class StoreService:
 
     async def reject_merge_suggestion(self, suggestion_id: str, user_id: str) -> None:
         await self.suggestion_repo.reject(suggestion_id, user_id)
+        await self.db.commit()
+
+    async def delete(self, store_id: str) -> None:
+        store = await self.get_by_id(store_id)
+
+        # Block if receipts are still attached
+        count_result = await self.db.execute(
+            select(func.count()).where(Receipt.store_id == store_id)
+        )
+        receipt_count = count_result.scalar() or 0
+        if receipt_count > 0:
+            raise ValidationError(
+                f"Cannot delete store with {receipt_count} receipt(s). "
+                "Reassign or merge receipts first."
+            )
+
+        await self.db.delete(store)
         await self.db.commit()
 
     async def scan_for_duplicates(self) -> int:

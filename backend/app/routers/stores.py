@@ -90,7 +90,8 @@ async def accept_merge_suggestion(
 ) -> StoreResponse:
     svc = StoreService(db)
     store = await svc.accept_merge_suggestion(suggestion_id, admin.id)
-    return _to_response(store)
+    count = await svc.get_receipt_count(store.id)
+    return _to_response(store, count)
 
 
 @router.post("/merge-suggestions/{suggestion_id}/reject")
@@ -122,7 +123,8 @@ async def get_store(
 ) -> StoreResponse:
     svc = StoreService(db)
     store = await svc.get_by_id_with_aliases(store_id)
-    return _to_response(store)
+    count = await svc.get_receipt_count(store_id)
+    return _to_response(store, count)
 
 
 @router.patch("/{store_id}", response_model=StoreResponse)
@@ -134,7 +136,19 @@ async def update_store(
 ) -> StoreResponse:
     svc = StoreService(db)
     store = await svc.update(store_id, body)
-    return _to_response(store)
+    count = await svc.get_receipt_count(store_id)
+    return _to_response(store, count)
+
+
+@router.delete("/{store_id}")
+async def delete_store(
+    store_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    svc = StoreService(db)
+    await svc.delete(store_id)
+    return {"detail": "Store deleted"}
 
 
 @router.post("/{store_id}/merge", response_model=StoreResponse)
@@ -147,7 +161,8 @@ async def merge_stores(
     svc = StoreService(db)
     store = await svc.merge_stores(store_id, body.duplicate_ids, admin.id)
     await db.commit()
-    return _to_response(store)
+    count = await svc.get_receipt_count(store_id)
+    return _to_response(store, count)
 
 
 # ── Aliases ──

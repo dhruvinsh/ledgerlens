@@ -14,6 +14,7 @@ const Items = lazy(() => import("@/pages/Items"));
 const ProductDetail = lazy(() => import("@/pages/ProductDetail"));
 const PriceTracker = lazy(() => import("@/pages/PriceTracker"));
 const Stores = lazy(() => import("@/pages/Stores"));
+const StoreDetail = lazy(() => import("@/pages/StoreDetail"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const HouseholdSettings = lazy(() => import("@/pages/HouseholdSettings"));
 const AdminModels = lazy(() => import("@/pages/AdminModels"));
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
           { path: "/items/:id", element: <ProductDetail /> },
           { path: "/price-tracker", element: <PriceTracker /> },
           { path: "/stores", element: <Stores /> },
+          { path: "/stores/:id", element: <StoreDetail /> },
           { path: "/settings", element: <Settings /> },
           { path: "/settings/household", element: <HouseholdSettings /> },
           { path: "/admin/models", element: <AdminModels /> },

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
-import type { PaginatedResponse, Store } from "@/lib/types";
+import type { PaginatedResponse, Store, StoreAlias } from "@/lib/types";
 
-export function useStores(filters: { search?: string; page?: number; per_page?: number } = {}) {
+export function useStores(filters: { search?: string; chain?: string; page?: number; per_page?: number } = {}) {
   return useQuery({
     queryKey: ["stores", filters],
     queryFn: () =>
@@ -26,6 +26,46 @@ export function useUpdateStore() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["stores", vars.id] });
       qc.invalidateQueries({ queryKey: ["stores"] });
+    },
+  });
+}
+
+export function useDeleteStore() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/stores/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["stores"] }),
+  });
+}
+
+export function useStoreAliases(storeId: string | undefined) {
+  return useQuery({
+    queryKey: ["stores", storeId, "aliases"],
+    queryFn: () => api.get<StoreAlias[]>(`/stores/${storeId}/aliases`),
+    enabled: !!storeId,
+  });
+}
+
+export function useAddStoreAlias() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ storeId, alias_name }: { storeId: string; alias_name: string }) =>
+      api.post<StoreAlias>(`/stores/${storeId}/aliases`, { alias_name }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["stores", vars.storeId, "aliases"] });
+      qc.invalidateQueries({ queryKey: ["stores", vars.storeId] });
+    },
+  });
+}
+
+export function useRemoveStoreAlias() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ storeId, aliasId }: { storeId: string; aliasId: string }) =>
+      api.delete(`/stores/${storeId}/aliases/${aliasId}`),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["stores", vars.storeId, "aliases"] });
+      qc.invalidateQueries({ queryKey: ["stores", vars.storeId] });
     },
   });
 }

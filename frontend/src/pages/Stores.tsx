@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { motion } from "motion/react";
-import { Search, MapPin, Store as StoreIcon } from "lucide-react";
+import { Search, MapPin, Store as StoreIcon, Receipt } from "lucide-react";
 import { useStores } from "@/hooks/useStores";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,26 +41,36 @@ export default function Stores() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.02, duration: 0.2 }}
               >
-                <Card>
-                  <CardContent className="space-y-2 py-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <StoreIcon size={16} className="text-accent" />
-                        <span className="font-medium">{store.name}</span>
+                <Link to={`/stores/${store.id}`}>
+                  <Card className="transition-colors hover:border-accent/30">
+                    <CardContent className="space-y-2 py-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2">
+                          <StoreIcon size={16} className="text-accent" />
+                          <span className="font-medium">{store.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {store.is_verified && <Badge variant="success">Verified</Badge>}
+                        </div>
                       </div>
-                      {store.is_verified && <Badge variant="success">Verified</Badge>}
-                    </div>
-                    {store.address && (
-                      <div className="flex items-start gap-1.5 text-xs text-text-muted">
-                        <MapPin size={12} className="mt-0.5 shrink-0" />
-                        {store.address}
+                      {store.address && (
+                        <div className="flex items-start gap-1.5 text-xs text-text-muted">
+                          <MapPin size={12} className="mt-0.5 shrink-0" />
+                          {store.address}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        {store.chain && (
+                          <span className="text-xs text-text-muted">Chain: {store.chain}</span>
+                        )}
+                        <div className="flex items-center gap-1 text-xs text-text-muted ml-auto">
+                          <Receipt size={11} />
+                          {store.receipt_count}
+                        </div>
                       </div>
-                    )}
-                    {store.chain && (
-                      <p className="text-xs text-text-muted">Chain: {store.chain}</p>
-                    )}
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </Link>
               </motion.div>
             ))}
           </div>
