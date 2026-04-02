@@ -110,7 +110,7 @@ Single Docker container running four processes via Supervisor:
 **OCR**: Tesseract via pytesseract  
 **LLM**: OpenAI SDK (works with any compatible endpoint)
 
-See [architectur.md](architectur.md) for the full architecture reference.
+See [architecture.md](architecture.md) for the full architecture reference.
 
 ## Development
 

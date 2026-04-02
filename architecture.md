@@ -1,356 +1,865 @@
-# LedgerLens 2 Architecture
+# LedgerLens — Architecture Reference
 
-## Overview
-
-LedgerLens 2 is a self-hosted receipt tracking PWA that extracts structured data from receipt images/PDFs using OCR and LLM-powered extraction. It runs as a single Docker container with Nginx, FastAPI, Celery, and Redis managed by Supervisor.
+> As-built architecture documentation for LedgerLens, a self-hosted, privacy-first
+> receipt-tracking PWA. The system runs in a **single Docker container**.
 
 ---
 
-## Project Structure
+## Table of Contents
+
+1. [System Overview](#1-system-overview)
+2. [Project Structure](#2-project-structure)
+3. [Technology Stack](#3-technology-stack)
+4. [Data Model](#4-data-model)
+5. [Backend Architecture](#5-backend-architecture)
+6. [Frontend Architecture](#6-frontend-architecture)
+7. [Single-Container Docker Design](#7-single-container-docker-design)
+8. [API Contract](#8-api-contract)
+9. [Background Processing](#9-background-processing)
+10. [OCR & LLM Pipeline](#10-ocr--llm-pipeline)
+11. [Authentication & Authorization](#11-authentication--authorization)
+12. [Real-Time Communication](#12-real-time-communication)
+13. [File Storage](#13-file-storage)
+14. [Database Migrations](#14-database-migrations)
+15. [Testing](#15-testing)
+16. [CI/CD](#16-cicd)
+17. [Configuration & Environment](#17-configuration--environment)
+
+---
+
+## 1. System Overview
+
+LedgerLens is a self-hosted receipt-tracking PWA. Users upload receipt images or PDFs,
+which pass through an OCR → LLM extraction pipeline. The system normalises line items
+into canonical products, offers fuzzy-match suggestions, tracks prices over time, and
+provides spending dashboards — all shareable within a household.
+
+### Design Principles
+
+1. **Layered backend**: Router → Service → Repository. Routers handle HTTP concerns only; services contain business logic; repositories encapsulate all database queries.
+2. **Domain exceptions**: No `HTTPException` below the router layer. Services raise domain-specific exceptions; routers translate them to HTTP responses.
+3. **Single responsibility models**: Each ORM model in its own file, inheriting a `BaseMixin` that provides `id`, `created_at`, `updated_at`.
+4. **Strict typing**: mypy strict mode (backend), TypeScript strict mode (frontend).
+5. **Testability**: Every service accepts its DB session as a parameter. Repositories are easily mockable.
+6. **Single container**: One Dockerfile, one image, four supervised processes (Redis, FastAPI, Celery worker, Nginx).
+
+### Key Features
+
+- **Receipt OCR + LLM extraction** — Tesseract OCR with OpenAI-compatible LLM, heuristic fallback
+- **Smart product matching** — RapidFuzz fuzzy matching with configurable auto-link and suggestion thresholds
+- **Price tracking** — Historical price data per canonical product, filterable by store and date range
+- **Household sharing** — Multi-user households with invite tokens and shared receipt visibility
+- **Analytics dashboard** — Spending by category, store frequency, monthly trends
+- **Real-time updates** — WebSocket push for processing job progress via Redis pub/sub
+- **Background processing** — Celery task queue with retroactive matching loop
+
+---
+
+## 2. Project Structure
 
 ```
 ledgerlens2/
-├── backend/                    # Python FastAPI backend
+├── backend/
 │   ├── app/
-│   │   ├── main.py            # FastAPI app + lifespan
-│   │   ├── worker.py          # Celery configuration
-│   │   ├── core/              # Config, DB, auth, exceptions
-│   │   ├── models/            # SQLAlchemy ORM models
-│   │   ├── schemas/           # Pydantic request/response schemas
-│   │   ├── repositories/      # Data access layer
-│   │   ├── services/          # Business logic layer
-│   │   ├── routers/           # API route handlers
-│   │   ├── middleware/        # Auth & security middleware
-│   │   └── tasks/             # Celery async tasks
-│   ├── alembic/               # Database migrations
+│   │   ├── __init__.py
+│   │   ├── main.py                    # FastAPI app factory, lifespan, CORS, middleware
+│   │   ├── core/
+│   │   │   ├── config.py              # pydantic-settings Settings class
+│   │   │   ├── database.py            # engine, session factory, Base, get_db
+│   │   │   ├── dependencies.py        # FastAPI dependency injection (get_current_user, etc.)
+│   │   │   ├── exceptions.py          # Domain exception hierarchy
+│   │   │   ├── security.py            # password hashing, token serialiser
+│   │   │   └── time.py                # utc_now() — single source of truth
+│   │   ├── models/
+│   │   │   ├── __init__.py            # re-exports all models
+│   │   │   ├── base.py                # BaseMixin (id, created_at, updated_at)
+│   │   │   ├── user.py
+│   │   │   ├── user_session.py
+│   │   │   ├── household.py
+│   │   │   ├── receipt.py
+│   │   │   ├── line_item.py
+│   │   │   ├── canonical_item.py
+│   │   │   ├── match_suggestion.py
+│   │   │   ├── store.py
+│   │   │   ├── store_alias.py
+│   │   │   ├── store_merge_suggestion.py
+│   │   │   ├── processing_job.py
+│   │   │   └── model_config.py
+│   │   ├── schemas/                   # Pydantic request/response models
+│   │   ├── repositories/             # Data access layer (one per model)
+│   │   ├── services/                 # Business logic layer
+│   │   │   ├── auth.py               # login, register, session lifecycle
+│   │   │   ├── receipt.py            # upload, manual create, update, delete, list
+│   │   │   ├── extraction.py         # orchestrate OCR → LLM/heuristic → persist
+│   │   │   ├── ocr.py                # Tesseract wrapper + PDF handler
+│   │   │   ├── llm.py                # OpenAI-compatible chat extraction
+│   │   │   ├── heuristic.py          # Regex-based receipt parser
+│   │   │   ├── normalization.py      # Store name / item name normalisation
+│   │   │   ├── matching.py           # Fuzzy match engine (rapidfuzz)
+│   │   │   ├── store_matching.py     # Store fuzzy matching + alias resolution
+│   │   │   ├── item.py               # Canonical item CRUD + price history
+│   │   │   ├── store.py              # Store CRUD, merge, delete
+│   │   │   ├── dashboard.py          # Aggregation queries
+│   │   │   ├── household.py          # Household CRUD, invites, join
+│   │   │   ├── admin.py              # ModelConfig CRUD
+│   │   │   ├── processing.py         # Enqueue receipt, orphan recovery
+│   │   │   ├── image_fetcher.py      # Google CSE image search
+│   │   │   ├── storage.py            # File save/delete, path validation
+│   │   │   ├── scope.py              # Household-aware visibility filters
+│   │   │   ├── notifications.py      # Redis pub/sub for WebSocket
+│   │   │   └── retroactive_matching.py
+│   │   ├── routers/                  # HTTP + WebSocket endpoints
+│   │   │   ├── auth.py
+│   │   │   ├── receipts.py
+│   │   │   ├── items.py
+│   │   │   ├── stores.py
+│   │   │   ├── dashboard.py
+│   │   │   ├── household.py
+│   │   │   ├── admin.py
+│   │   │   ├── jobs.py
+│   │   │   ├── line_items.py
+│   │   │   ├── suggestions.py
+│   │   │   └── ws.py
+│   │   ├── middleware/
+│   │   │   ├── auth.py                # Session cookie gate
+│   │   │   └── security.py            # CSP + security headers
+│   │   ├── tasks/
+│   │   │   └── receipt_processing.py
+│   │   └── worker.py                  # Celery app definition
+│   ├── alembic/
+│   │   ├── env.py
+│   │   └── versions/
 │   ├── tests/
-│   └── pyproject.toml         # Python deps (uv)
-├── frontend/                  # React + TypeScript SPA
+│   ├── alembic.ini
+│   ├── pyproject.toml
+│   └── uv.lock
+├── frontend/
 │   ├── src/
-│   │   ├── pages/             # Page components (lazy-loaded)
-│   │   ├── components/        # Reusable components (Shadcn/ui)
-│   │   ├── hooks/             # React Query hooks
-│   │   ├── services/          # API client & WebSocket
-│   │   ├── stores/            # Zustand state management
-│   │   └── lib/               # Types & utilities
-│   └── package.json           # NPM deps (Bun)
-├── infra/                     # Docker & process management
-│   ├── Dockerfile
-│   ├── entrypoint.sh
-│   ├── supervisord.conf
-│   └── nginx.conf
-└── docker-compose.yml
+│   │   ├── main.tsx
+│   │   ├── App.tsx
+│   │   ├── index.css
+│   │   ├── router.tsx
+│   │   ├── components/
+│   │   │   ├── layout/                # AppShell, ProtectedRoute
+│   │   │   ├── receipt/               # EnrichedLineItem, EditLineItemDialog
+│   │   │   ├── product/               # Product display components
+│   │   │   └── ui/                    # Card, Button, Input, Dialog, Badge, etc.
+│   │   ├── hooks/                     # TanStack Query hooks (8 modules)
+│   │   ├── lib/                       # types.ts, utils.ts, money.ts
+│   │   ├── pages/                     # 16 page components
+│   │   ├── services/                  # api.ts, websocket.ts
+│   │   └── stores/                    # appStore.ts, toastStore.ts (Zustand)
+│   ├── index.html
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   └── package.json
+├── infra/
+│   ├── nginx.conf                     # Reverse proxy configuration
+│   ├── supervisord.conf               # Process supervisor
+│   └── entrypoint.sh                  # Migration + supervisord launch
+├── Dockerfile                         # Multi-stage all-in-one image
+├── docker-compose.yml                 # Single-service convenience compose
+├── .env.example
+├── .github/workflows/
+│   └── ghcr-publish.yml               # Docker image CI
+└── CLAUDE.md                          # AI assistant design guidelines
 ```
 
 ---
 
-## Backend
+## 3. Technology Stack
 
-### Stack
+### Backend
 
-- **Framework**: FastAPI 0.115+, Uvicorn
-- **Language**: Python 3.13+, fully async
-- **ORM**: SQLAlchemy 2.0 (async) + aiosqlite
-- **Database**: SQLite (WAL mode) with optional PostgreSQL
-- **Migrations**: Alembic (always `--autogenerate`, never hand-written)
-- **Task Queue**: Celery with Redis broker
-- **OCR**: Tesseract (via pytesseract)
-- **LLM**: OpenAI SDK (compatible with Ollama, vLLM, OpenAI)
-- **Fuzzy Matching**: RapidFuzz
+| Component | Technology | Version |
+|---|---|---|
+| Language | Python | 3.13+ |
+| Framework | FastAPI | 0.115+ |
+| Server | Uvicorn | 0.34 |
+| ORM | SQLAlchemy | 2.0+ (async) |
+| Default DB | SQLite | via `aiosqlite` |
+| Optional DB | PostgreSQL | via `asyncpg` |
+| Migrations | Alembic | 1.14+ |
+| OCR | Tesseract | via `pytesseract` 0.3 |
+| PDF | PyMuPDF (`fitz`) | 1.25+ |
+| Image processing | Pillow | 11.0+ |
+| LLM client | OpenAI Python SDK | 1.60+ |
+| Fuzzy matching | RapidFuzz | 3.14+ |
+| Task queue | Celery | 5.4+ |
+| Broker | Redis | 5.0+ (embedded) |
+| Auth tokens | itsdangerous | 2.2+ |
+| Password hash | bcrypt | 4.2+ |
+| Settings | pydantic-settings | 2.7+ |
+| Package manager | uv | latest |
 
-### Layered Architecture
+### Frontend
 
-```
-Routers (API) → Services (business logic) → Repositories (data access) → Models (ORM)
-```
+| Component | Technology | Version |
+|---|---|---|
+| Language | TypeScript | 5.9 |
+| UI framework | React | 19 |
+| Build tool | Vite | 8 |
+| CSS | Tailwind CSS | 4 |
+| Server state | TanStack React Query | 5 |
+| Client state | Zustand | 5 |
+| Routing | React Router | 7 |
+| Charts | Recharts | 2 |
+| Animation | Motion | 12 |
+| Icons | Lucide React | 1.7+ |
+| Date utilities | date-fns | 4 |
+| Package manager | Bun | 1 |
 
-- **Routers** (`app/routers/`): FastAPI `APIRouter` instances, one per resource. Handle HTTP concerns only.
-- **Services** (`app/services/`): Business logic, coordination across repos and external services.
-- **Repositories** (`app/repositories/`): SQLAlchemy queries, data access encapsulation.
-- **Models** (`app/models/`): Declarative ORM models inheriting `BaseMixin` (id, created_at, updated_at).
+### In-Container Infrastructure
 
-### Data Models
-
-#### User
-- `id`, `email` (unique), `password_hash` (bcrypt), `role` (admin|member)
-- `household_id` FK (nullable), `is_active`
-- First registered user becomes admin
-
-#### Household
-- `id`, `name`, `owner_id` FK, `sharing_mode` (shared|private)
-- Members join via time-limited invite tokens (7 days)
-
-#### Receipt
-- `id`, `user_id` FK (CASCADE), `household_id` FK (SET NULL), `store_id` FK (SET NULL)
-- `transaction_date`, `currency` (default "CAD"), `subtotal`/`tax`/`total` (cents)
-- `discount` (cents, planned), `payment_method` (cash|credit|debit|other, planned), `is_refund` (bool, planned)
-- `source` (camera|upload|manual), `status` (pending|processing|processed|reviewed|failed|deleted)
-- `file_path`, `thumbnail_path`, `page_count`
-- `raw_ocr_text`, `ocr_confidence`, `extraction_source` (llm|heuristic)
-- `duplicate_of` FK (self-reference), `notes`
-- Indexes: `(user_id, transaction_date)`, `(household_id, transaction_date)`, `(store_id)`
-
-#### LineItem
-- `id`, `receipt_id` FK (CASCADE), `canonical_item_id` FK (SET NULL)
-- `name` (LLM-cleaned), `raw_name` (verbatim OCR text, planned), `quantity`, `unit_price`, `total_price` (cents)
-- `discount` (cents, planned), `is_refund` (bool, planned), `tax_code` (H/G/P/F, planned), `weight_qty` (e.g. "1.230 kg", planned)
-- `confidence`, `position`, `is_corrected`
-
-#### CanonicalItem
-- `id`, `name` (unique, indexed), `category`, `aliases` (JSON array)
-- `product_url`, `image_path`, `image_source`, `image_fetch_status`
-
-#### MatchSuggestion
-- `id`, `line_item_id` FK (CASCADE), `canonical_item_id` FK (CASCADE)
-- `confidence`, `status` (pending|accepted|rejected)
-- Unique: `(line_item_id, canonical_item_id)`
-
-#### Store
-- `id`, `name` (indexed), `address`, `chain`
-- `latitude`, `longitude`, `created_by` FK (RESTRICT), `is_verified`
-- `merged_into_id` FK (SET NULL) — soft-redirect after merge - Relationships: `receipts`, `aliases` 
-#### StoreAlias - `id`, `store_id` FK (CASCADE), `alias_name`, `alias_name_lower` (unique, indexed)
-- `source` (auto|manual|ocr)
-- Maps OCR name variations to canonical stores
-
-#### StoreMergeSuggestion - `id`, `store_a_id` FK, `store_b_id` FK, `confidence`, `status`
-- Pairs of potentially-duplicate stores for admin review
-- Unique: `(store_a_id, store_b_id)`
-
-#### ProcessingJob
-- `id`, `receipt_id` FK (CASCADE), `model_config_id` FK (SET NULL)
-- `status` (queued|running|completed|failed), `stage` (ocr|extraction|matching)
-- `celery_task_id`, `error_message`, `started_at`, `completed_at`
-
-#### ModelConfig
-- `id`, `name`, `provider_type` (openai|ollama), `base_url`, `model_name`
-- `api_key_encrypted`, `is_active`, `timeout_seconds`, `max_retries`
-- `last_health_check`, `health_status`
-
-#### UserSession
-- `id`, `user_id` FK, `token_hash`, `ip_address`, `user_agent`, `expires_at`
-
-### API Endpoints
-
-All under `/api/v1/` unless noted. Auth via `session_id` httponly cookie.
-
-| Router | Key Endpoints |
-|--------|---------------|
-| `auth` | POST register, login, logout; GET /me |
-| `receipts` | POST upload, manual; GET list, detail; PATCH update; POST reprocess; DELETE |
-| `items` | CRUD canonical items |
-| `stores` | GET list (search, pagination), GET detail, PATCH update (admin) |
-| `suggestions` | GET list; POST accept/reject match suggestions |
-| `dashboard` | GET spending analytics |
-| `household` | CRUD household, invite/join |
-| `admin` | CRUD model configs, health checks |
-| `jobs` | GET list/detail, POST cancel |
-| `line_items` | PATCH update |
-| `ws` | WebSocket /ws/jobs (real-time job updates) |
-
-### Receipt Processing Pipeline
-
-```
-Upload → Save file → Create Receipt (pending) → Enqueue ProcessingJob
-                                                        ↓
-                                              Celery Worker picks up
-                                                        ↓
-                                              OCR (Tesseract)
-                                                        ↓
-                                              Load known stores + products from DB
-                                                        ↓
-                                              LLM Extraction (with known context)
-                                                        ↓
-                                              Fallback: Heuristic (regex)
-                                                        ↓
-                                              Store Normalization & Matching
-                                                        ↓
-                                              Line Item Creation (with discount, refund, tax_code, weight)
-                                                        ↓
-                                              Fuzzy Match → CanonicalItems
-                                                        ↓
-                                              Receipt status → "processed"
-                                                        ↓
-                                              WebSocket notification
-```
-
-### LLM-Enhanced Extraction 
-The LLM receives three inputs:
-1. **Raw OCR text** — the receipt content
-2. **Known store names** (up to 50) — enables OCR error correction at extraction time
-3. **Known product names** (up to 100) — enables matching garbled item names to existing canonical items
-
-The LLM extracts richer data than the current minimal schema:
-- **Per-item**: raw_name (verbatim OCR) + name (cleaned, expanded abbreviations, title case), quantity, unit/total price, discount_cents, is_refund, tax_code (H/G/P/F), weight_qty
-- **Receipt-level**: raw_store_name + store_name, store_chain, store_address, subtotal/tax/total, discount_total, tax_breakdown (per tax type), payment_method, is_refund_receipt
-- **Item intelligence**: Combines multi-line items, associates discount/coupon lines with their items, marks refund items, parses weighted produce
-
-### Alias Seeding from Extraction
-
-Both stores and products build aliases immediately during extraction:
-- When LLM cleans `raw_name` → `name` for an item, the `raw_name` is added as a CanonicalItem alias (if it differs)
-- When LLM cleans `raw_store_name` → `store_name`, the raw version becomes a StoreAlias with `source="ocr"`
-- On subsequent receipts, alias lookups match instantly — no LLM or fuzzy matching needed for previously-seen OCR variations
-- This creates a self-improving system: each receipt processed makes future matching faster and more accurate
-
-### Product Matching (MatchingService)
-
-Resolution order for line item names:
-1. Exact canonical name match → link
-2. Exact alias match → link
-3. Fuzzy >= auto-link threshold (85) → link + add alias
-4. Fuzzy >= suggest threshold (60) → create MatchSuggestion for review
-5. No match → create new CanonicalItem
-
-Uses `rapidfuzz.fuzz.token_sort_ratio` + `partial_ratio`, max score wins.
-
-### Store Matching (StoreMatchingService)
-
-Resolution order for OCR-extracted store names:
-1. Exact canonical name match (case-insensitive)
-2. Exact alias match (via StoreAlias table)
-3. Fuzzy >= auto-link threshold (88) + address check → link + add alias
-4. Fuzzy >= suggest threshold (65) → create StoreMergeSuggestion
-5. No match → create new Store
-
-**Address-aware matching**: Same chain + different address = separate stores (shared `chain` value). Same chain + matching/missing address = same store.
-
-**LLM-enhanced extraction**: The LLM prompt receives existing store names as context, enabling it to fix OCR errors at the source (e.g., "WAL-MART SUPERCNTR" → "Walmart"). The LLM also returns `store_chain` for chain detection.
-
-**Two-level filtering**:
-- Chain filter: `?chain=Walmart` → all Walmart locations
-- Store filter: `?store_id=abc` → single location
-
-### Normalization
-
-- `normalize_store_name(name)` → `(normalized, chain|None)`: strips store numbers, suffixes; matches against known chains dict
-- `normalize_item_name(name)` → lowered, whitespace-collapsed
-
-### Real-time Updates
-
-- WebSocket at `/ws/jobs?session_id={token}`
-- Redis pub/sub: Celery worker publishes → backend subscriber → WebSocket to client
-- Messages: `{"type": "job_update", "job_id": "...", "status": "...", "stage": "..."}`
-
-### Retroactive Matching
-
-Background loop (every 300s, batch of 200): re-matches unmatched LineItems against newly added CanonicalItems.
-
-### Authentication
-
-- Cookie-based sessions (`session_id`, httponly, samesite=lax)
-- Password hashing: bcrypt
-- Token signing: itsdangerous URLSafeTimedSerializer (30-day max age)
-- Invite tokens: 7-day expiry, household-scoped
-- AuthMiddleware on all `/api/*` except `/api/v1/auth/*`
-
-### Middleware Order (outermost first)
-
-1. AuthMiddleware — session validation
-2. SecurityMiddleware — security headers
-3. CORSMiddleware — CORS (localhost:5173 in dev)
+| Component | Role |
+|---|---|
+| **Nginx** | Port 80 — serves SPA static files, proxies `/api/*`, `/ws/*`, `/files/*` to Uvicorn |
+| **Uvicorn** | ASGI server on 127.0.0.1:8000 |
+| **Celery worker** | prefork pool, concurrency=1, processes receipt jobs |
+| **Redis** | In-memory broker on 127.0.0.1:6379, no persistence (pub/sub for WebSocket) |
+| **Supervisor** | Manages all four processes, auto-restarts on failure |
 
 ---
 
-## Frontend
+## 4. Data Model
 
-### Stack
+### Base Mixin
 
-- **Framework**: React 19, TypeScript 5.9
-- **Build**: Vite 8, Bun
-- **Styling**: Tailwind CSS 4, Lucide icons
-- **State**: Zustand 5 (UI state) + React Query 5 (server state)
-- **Routing**: React Router 7 (lazy-loaded pages)
-- **Charts**: Recharts
-- **Animation**: Motion (Framer Motion successor)
-- **Components**: Shadcn/ui pattern
+Every model inherits `BaseMixin` providing:
 
-### Routes
+```python
+class BaseMixin:
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+```
+
+### Entity Summary (12 tables)
+
+| Model | Table | Purpose | Key Relationships |
+|---|---|---|---|
+| `User` | `users` | Account with email/password/role | → Household?, → Receipt[] |
+| `UserSession` | `user_sessions` | Server-side session rows (no `updated_at`) | → User |
+| `Household` | `households` | Multi-user grouping | → User[] (members) |
+| `Receipt` | `receipts` | Core receipt record (totals, dates, status, files) | → User, → Store?, → LineItem[], → ProcessingJob[] |
+| `LineItem` | `line_items` | Individual line on a receipt (no `updated_at`) | → Receipt, → CanonicalItem?, → MatchSuggestion[] |
+| `CanonicalItem` | `canonical_items` | Normalised product identity (name, aliases, category, image) | ← LineItem[], ← MatchSuggestion[] |
+| `MatchSuggestion` | `match_suggestions` | Fuzzy-match proposal linking LineItem ↔ CanonicalItem | → LineItem, → CanonicalItem |
+| `Store` | `stores` | Merchant (name, address, geo, chain) | → Receipt[], → StoreAlias[], → merged_into Store? |
+| `StoreAlias` | `store_aliases` | OCR name variations mapped to canonical stores (indexed) | → Store |
+| `StoreMergeSuggestion` | `store_merge_suggestions` | Fuzzy-match duplicate store pairs for admin review | → Store (a), → Store (b) |
+| `ProcessingJob` | `processing_jobs` | Tracks async OCR/LLM pipeline runs (no `updated_at`) | → Receipt, → ModelConfig? |
+| `ModelConfig` | `model_configs` | Admin-managed LLM endpoint configuration | — |
+
+### Money Representation
+
+All monetary values are stored as **integers in minor units (cents)**. The frontend
+formats them via a shared `formatMoney(cents, currency)` helper. Currency is a 3-letter
+ISO code (default `CAD`).
+
+### Key Columns
+
+#### `receipts`
+
+| Column | Type | Notes |
+|---|---|---|
+| `status` | `String(20)` | `pending`, `processing`, `completed`, `failed` |
+| `source` | `String(20)` | `camera`, `upload`, `manual` |
+| `extraction_source` | `String(20)` | `llm`, `heuristic` |
+| `subtotal`, `tax`, `total` | `Integer` | Cents, nullable |
+| `discount` | `Integer` | Total discount in cents, nullable |
+| `payment_method` | `String(20)` | `cash`, `credit`, `debit`, `other`, nullable |
+| `is_refund` | `Boolean` | Whether entire receipt is a return/refund |
+| `ocr_confidence` | `Float` | 0.0–1.0, nullable |
+| `raw_ocr_text` | `Text` | Full OCR output stored for debugging |
+| `duplicate_of` | FK → self | Duplicate detection reference |
+
+#### `canonical_items`
+
+| Column | Type | Notes |
+|---|---|---|
+| `name` | `String(255)` | Unique, the canonical product name |
+| `aliases` | `JSON` | List of alternative names (from OCR) |
+| `category` | `String(100)` | Optional product category |
+| `image_path` | `String(500)` | Optional product image |
+| `image_fetch_status` | `String(20)` | `pending`, `fetching`, `found`, `not_found`, `failed` |
+
+#### `line_items`
+
+| Column | Type | Notes |
+|---|---|---|
+| `name` | `String(500)` | LLM-cleaned product name |
+| `raw_name` | `String(500)` | Verbatim OCR text, nullable |
+| `quantity` | `Float` | Default 1.0 |
+| `unit_price`, `total_price` | `Integer` | Cents, nullable |
+| `discount` | `Integer` | Item-level discount in cents, nullable |
+| `is_refund` | `Boolean` | Whether item is a return |
+| `tax_code` | `String(5)` | Tax indicator (`H`, `G`, `P`, `F`), nullable |
+| `weight_qty` | `String(50)` | Weight string for produce/deli, nullable |
+| `confidence` | `Float` | Fuzzy match confidence, nullable |
+| `position` | `Integer` | Order on receipt |
+
+#### `stores`
+
+| Column | Type | Notes |
+|---|---|---|
+| `name` | `String(255)` | Canonical store name |
+| `address` | `String(500)` | Street address, nullable |
+| `chain` | `String(100)` | Parent chain name (Walmart, Costco), nullable |
+| `merged_into_id` | FK → self | Soft-redirect after merge, SET NULL |
+| `is_verified` | `Boolean` | Admin-verified store |
+| `latitude`, `longitude` | `Float` | Geo coordinates, nullable |
+
+#### `store_aliases`
+
+| Column | Type | Notes |
+|---|---|---|
+| `store_id` | FK → stores.id | CASCADE on delete, indexed |
+| `alias_name` | `String(255)` | Original OCR text |
+| `alias_name_lower` | `String(255)` | Lowered, unique constraint, indexed |
+| `source` | `String(20)` | `auto`, `manual`, `ocr` |
+
+#### `match_suggestions`
+
+| Column | Type | Notes |
+|---|---|---|
+| `score` | `Float` | 0.0–100.0 from fuzzy matching |
+| `status` | `String(20)` | `pending`, `accepted`, `rejected` |
+
+---
+
+## 5. Backend Architecture
+
+### Application Factory (`app/main.py`)
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create data directory, engine, session factory
+    # Start retroactive matching background loop
+    yield
+    # Cancel background tasks, dispose engine
+
+app = FastAPI(title="LedgerLens API", lifespan=lifespan)
+
+# Middleware (outermost first)
+app.add_middleware(AuthMiddleware)
+app.add_middleware(SecurityMiddleware)
+app.add_middleware(CORSMiddleware, ...)
+
+# Routers at /api/v1
+# WebSocket at /ws/jobs
+# Static files at /files/
+```
+
+### Domain Exception Hierarchy
+
+```python
+class AppError(Exception):              # Base — 500
+class NotFoundError(AppError): ...      # → 404
+class ConflictError(AppError): ...      # → 409
+class ForbiddenError(AppError): ...     # → 403
+class ValidationError(AppError): ...    # → 400
+class AuthenticationError(AppError): ...# → 401
+
+# Specific: ReceiptNotFoundError, ItemNotFoundError, StoreNotFoundError,
+#           JobNotFoundError, HouseholdNotFoundError, DuplicateEmailError,
+#           ActiveJobExistsError, InvalidCredentialsError, OCRProcessingError
+```
+
+A global `@app.exception_handler(AppError)` maps exception types to HTTP status codes.
+
+### Repository Layer
+
+Each repository encapsulates all SQLAlchemy queries for a single model. Repositories
+never import from `routers/` or raise HTTP exceptions. They return `None` when entities
+are not found; the service layer raises domain errors.
+
+### Service Layer
+
+Services contain business logic and orchestrate repositories. They accept `AsyncSession`
+as a parameter (injected by the router via `Depends(get_db)`).
+
+### Router Layer
+
+Routers are thin — parse HTTP inputs, construct services, call service methods, and
+serialise responses via Pydantic schemas. No business logic lives here.
+
+### Middleware
+
+- **`AuthMiddleware`**: Requires `session_id` cookie on all `/api/*` paths except `/api/v1/auth/*`, `/docs`, `/openapi.json`.
+- **`SecurityMiddleware`**: Adds `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`.
+
+---
+
+## 6. Frontend Architecture
+
+### Routing
 
 ```
-/                     → redirect to /dashboard
-/login, /register     → public
-/dashboard            → spending analytics
-/receipts             → receipt list + filters
-/receipts/add         → upload receipt
-/receipts/manual      → manual entry form
-/receipts/:id         → receipt detail + line items
-/items                → canonical items list
-/items/:id            → product detail + price history
-/price-tracker        → price trends
-/stores               → store list (chain grouping, merge UI)
-/stores/:id           → store detail /stores/merge-suggestions → duplicate review /settings             → user preferences
-/settings/household   → household management
-/admin/models         → LLM model config (admin)
-/join/:token          → household invite acceptance
+/                  → redirect to /dashboard
+/login             → Login (public)
+/register          → Register (public)
+<ProtectedRoute>   → fetches /auth/me, redirects to /login if unauthenticated
+  <AppShell>       → sidebar + mobile tab bar + <Suspense> outlet
+    /dashboard
+    /receipts
+    /receipts/add
+    /receipts/manual
+    /receipts/:id
+    /items
+    /items/:id
+    /price-tracker
+    /stores
+    /stores/:id
+    /settings
+    /settings/household
+    /admin/models
+    /join/:token
 ```
+
+All page components are lazy-loaded via `React.lazy`.
 
 ### State Management
 
-- **Zustand** (`stores/appStore.ts`): user, auth state, dashboard filters (dateFrom, dateTo, storeId, chain, category)
-- **React Query** (`hooks/`): server state caching, mutations with invalidation
-- **WebSocket** (`services/websocket.ts`): auto-reconnect, exponential backoff, job notifications
+| Store | Purpose |
+|---|---|
+| **`appStore`** (Zustand) | Auth state, user, UI preferences, dashboard filters, upload count |
+| **`toastStore`** (Zustand) | Toast notification queue |
+| **TanStack Query** | All server data: receipts, items, stores, dashboard, jobs, suggestions, household, admin |
 
-### API Client
+### API Client (`services/api.ts`)
 
-Fetch-based (`services/api.ts`): GET/POST/PATCH/DELETE/upload methods, credentials included, 401 → redirect to login.
+A `fetch`-based wrapper that:
+- Prepends `/api/v1` to paths
+- Sets `credentials: "include"` for cookies
+- On 401, redirects to `/login`
+- Exposes `api.get`, `api.post`, `api.patch`, `api.delete`, `api.upload`
+
+### WebSocket (`services/websocket.ts`)
+
+`WSService` singleton:
+- Connects to `ws(s)://<host>/ws/jobs?session_id=<token>`
+- Exponential backoff reconnection (1s → 30s max)
+- Parses incoming `ProcessingJob` state updates
+- `useJobNotifications` hook subscribes and invalidates TanStack Query caches
+
+### Pages (16)
+
+| Route | Page | Description |
+|---|---|---|
+| `/login` | Login | Email + password |
+| `/register` | Register | Email + display name + password |
+| `/dashboard` | Dashboard | Summary cards, spending charts |
+| `/receipts` | Receipts | Paginated list with status/store/date filters |
+| `/receipts/add` | AddReceipt | Camera capture + file upload |
+| `/receipts/manual` | ManualEntry | Manual receipt form |
+| `/receipts/:id` | ReceiptDetail | Receipt viewer with editable line items |
+| `/items` | Items | Paginated product list with search |
+| `/items/:id` | ProductDetail | Edit product, aliases, image, match suggestions |
+| `/price-tracker` | PriceTracker | Price history chart + table |
+| `/stores` | Stores | Store cards with receipt counts, links to detail |
+| `/stores/:id` | StoreDetail | Edit store name/address/chain, manage aliases, delete |
+| `/settings` | Settings | Profile, links to household/admin |
+| `/settings/household` | HouseholdSettings | Create/edit household, invite, members |
+| `/admin/models` | AdminModels | LLM model config CRUD |
+| `/join/:token` | JoinHousehold | Accept invite |
 
 ---
 
-## Infrastructure
+## 7. Single-Container Docker Design
 
-### Docker (Single Container)
+### Multi-Stage Dockerfile
 
-Multi-stage build → `python:3.13-slim-bookworm` with Tesseract, Nginx, Redis, Supervisor.
-
-**Supervisor manages 4 processes:**
-1. Redis (localhost:6379, in-memory only)
-2. Backend (Uvicorn, localhost:8000)
-3. Celery Worker (prefork, concurrency=1)
-4. Nginx (port 80, reverse proxy + SPA)
-
-### Nginx
-
-- `/` → SPA static files (try_files → /index.html)
-- `/api/*` → proxy to backend:8000
-- `/ws/*` → WebSocket upgrade to backend:8000
-- `/files/*` → proxy to backend:8000
-
-### Container Startup (entrypoint.sh)
-
-1. Create `appuser` with configurable UID/GID (`PUID`/`PGID` env vars)
-2. Apply umask
-3. Ensure data directory ownership
-4. Run `alembic upgrade head`
-5. Start Supervisor
-
-### Data Persistence
-
+**Stage 1** — Build frontend:
 ```
-./data/
-├── ledgerlens.db              # SQLite database
-├── receipts/{user_id}/{receipt_id}/
-│   ├── original.{ext}         # Uploaded file
-│   └── thumbnail.jpg
-└── products/{item_id}/
-    └── image.jpg
+FROM oven/bun:1
+→ bun install --frozen-lockfile
+→ bun run build
+→ produces /app/frontend/dist
 ```
 
-### Environment Variables
+**Stage 2** — Final all-in-one image:
+```
+FROM python:3.13-slim-bookworm
+→ Install: tesseract-ocr, nginx, redis-server, supervisor
+→ Install Python deps via uv (locked)
+→ Copy backend, frontend dist, infra configs
+→ EXPOSE 80
+→ ENTRYPOINT /entrypoint.sh
+```
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `DATABASE_URL` | `sqlite+aiosqlite:///./data/ledgerlens.db` | Database |
-| `SECRET_KEY` | `change-me` | Session signing |
-| `LLM_BASE_URL` | `http://127.0.0.1:11434/v1` | LLM endpoint (Ollama) |
+### Process Supervision (`supervisord.conf`)
+
+| Program | Command | Priority |
+|---|---|---|
+| redis | `redis-server --save "" --appendonly no --bind 127.0.0.1` | 10 |
+| backend | `uvicorn app.main:app --host 127.0.0.1 --port 8000` | 20 |
+| worker | `celery -A app.worker worker --pool=prefork --concurrency=1` | 20 |
+| nginx | `nginx -g "daemon off;"` | 30 |
+
+### Nginx Reverse Proxy
+
+```
+location /          → SPA (try_files → /index.html)
+location /api/      → proxy to 127.0.0.1:8000
+location /ws/       → WebSocket upgrade to 127.0.0.1:8000
+location /files/    → proxy to 127.0.0.1:8000
+```
+
+### Entrypoint
+
+1. Create data directory
+2. Run `alembic upgrade head`
+3. Start `supervisord`
+
+### Docker Compose
+
+Single `ledgerlens` service. Port 8080 (configurable via `LEDGERLENS_PORT`).
+Volume mount: `${LEDGERLENS_DATA_DIR:-./data}:/app/data`.
+
+---
+
+## 8. API Contract
+
+All endpoints under `/api/v1`. Auth via `session_id` cookie (httpOnly, sameSite=lax, 30-day max-age).
+
+### Pagination Envelope
+
+```json
+{ "items": [...], "total": 42, "page": 1, "per_page": 20 }
+```
+
+### Error Response
+
+```json
+{ "detail": "Human-readable error message" }
+```
+
+### Endpoints
+
+| Group | Method | Path | Description |
+|---|---|---|---|
+| **Auth** | POST | `/auth/register` | Register new user |
+| | POST | `/auth/login` | Login |
+| | POST | `/auth/logout` | Logout |
+| | GET | `/auth/me` | Current user info |
+| **Receipts** | POST | `/receipts` | Upload receipt (multipart) |
+| | POST | `/receipts/manual` | Create manual receipt |
+| | GET | `/receipts` | List with filters + pagination |
+| | GET | `/receipts/:id` | Receipt detail with line items |
+| | PATCH | `/receipts/:id` | Update receipt |
+| | DELETE | `/receipts/:id` | Delete receipt |
+| **Items** | GET | `/items` | List canonical items + pagination |
+| | GET | `/items/:id` | Product detail |
+| | PATCH | `/items/:id` | Update product |
+| | GET | `/items/:id/price-history` | Historical pricing |
+| | GET | `/items/:id/images` | Product images |
+| **Line Items** | PATCH | `/line-items/:id` | Edit/correct line item |
+| | DELETE | `/line-items/:id` | Delete line item |
+| **Stores** | GET | `/stores` | List stores (search, chain filter) |
+| | GET | `/stores/:id` | Store detail with aliases |
+| | PATCH | `/stores/:id` | Update store |
+| | DELETE | `/stores/:id` | Delete store (blocked if has receipts) |
+| | POST | `/stores/:id/merge` | Merge duplicates into this store |
+| | GET | `/stores/:id/aliases` | List aliases |
+| | POST | `/stores/:id/aliases` | Add manual alias |
+| | DELETE | `/stores/:id/aliases/:aid` | Remove alias |
+| | GET | `/stores/merge-suggestions` | Pending duplicate suggestions |
+| | POST | `/stores/merge-suggestions/:id/accept` | Accept + execute merge |
+| | POST | `/stores/merge-suggestions/:id/reject` | Dismiss suggestion |
+| | POST | `/stores/scan-duplicates` | Trigger on-demand duplicate scan |
+| **Suggestions** | GET | `/suggestions` | Match suggestions |
+| | POST | `/suggestions/:id/accept` | Accept + link |
+| | POST | `/suggestions/:id/reject` | Reject suggestion |
+| **Dashboard** | GET | `/dashboard` | Summary (totals, trends, top items) |
+| | GET | `/dashboard/stats` | Detailed statistics |
+| **Household** | POST | `/household` | Create household |
+| | GET | `/household` | Current household |
+| | PATCH | `/household` | Update household |
+| | GET | `/household/members` | List members |
+| | GET | `/household/invite-token` | Generate invite token |
+| | POST | `/household/join` | Join with token |
+| | DELETE | `/household/members/:id` | Remove member |
+| **Jobs** | GET | `/jobs` | List processing jobs |
+| | GET | `/jobs/:id` | Job detail |
+| | DELETE | `/jobs/:id` | Cancel job |
+| **Admin** | GET | `/admin/models` | List LLM configs |
+| | POST | `/admin/models` | Create config |
+| | PATCH | `/admin/models/:id` | Update config |
+| | DELETE | `/admin/models/:id` | Delete config |
+| **WebSocket** | WS | `/ws/jobs` | Real-time job status push |
+
+---
+
+## 9. Background Processing
+
+### Celery Configuration
+
+- Broker: Redis (embedded in container)
+- Serializer: JSON
+- Acks: late (task_acks_late=True)
+- Prefetch: 1
+- Soft time limit: 300s (configurable)
+- Hard time limit: 360s (configurable)
+
+### Worker Lifecycle
+
+**On `worker_process_init`**: Create dedicated async engine + session factory (NullPool + SQLite WAL pragmas).
+
+**On `worker_ready`**: Verify Tesseract binary; recover orphaned jobs (stale running → failed, stale queued → redispatch).
+
+### Task: `process_receipt_task(job_id)`
+
+1. Set job `status=processing`, `stage=ocr`
+2. Run Tesseract OCR (image or multi-page PDF)
+3. Store `raw_ocr_text` and `ocr_confidence` on receipt
+4. Set `stage=extraction`, call LLM extraction
+5. If LLM fails or returns no usable total → fall back to heuristic
+6. Normalise store name, resolve via StoreMatchingService (exact → alias → fuzzy → create), seed alias from raw OCR name
+7. For each line item: fuzzy match → auto-link / suggest / create new CanonicalItem
+8. Set receipt `status=completed`, job `status=completed`
+9. Publish status to Redis pub/sub → WebSocket push
+10. On error: set `status=failed` with error message
+
+### Retroactive Matching
+
+Async background loop on the FastAPI process (via `asyncio.create_task` in lifespan).
+Every 300s (configurable), scans unlinked `LineItem` rows, runs fuzzy matching, auto-links
+or creates suggestions. Batch size: 200 (configurable).
+
+---
+
+## 10. OCR & LLM Pipeline
+
+### OCR Service
+
+```
+Image → grayscale → upscale if < 1500px → binarize (threshold 150)
+      → pytesseract (OEM 3, PSM 6, DPI 300) → text + confidence
+
+PDF   → PyMuPDF rasterize each page at 300 DPI → OCR per page
+      → concatenate text → average confidence
+```
+
+Both run via `asyncio.to_thread` to avoid blocking the event loop.
+
+### LLM Service
+
+- **System prompt**: Comprehensive extraction instructions for:
+  - **Store**: `raw_store_name` (verbatim OCR), `store_name` (cleaned), `store_address`, `store_chain`
+  - **Receipt-level**: `transaction_date`, `currency`, `subtotal_cents`, `tax_cents`, `total_cents`, `discount_total_cents`, `payment_method`, `is_refund_receipt`, `tax_breakdown[]`
+  - **Line items**: `raw_name` (verbatim), `name` (cleaned), `quantity`, `unit_price_cents`, `total_price_cents`, `discount_cents`, `is_refund`, `tax_code`, `weight_qty`
+- **Known-entity injection**: Before calling the LLM, the extraction pipeline passes known store names (up to 50) and known product names (up to 100) in the user message, enabling the LLM to match OCR-garbled text against existing entities
+- **JSON mode**: Attempts `response_format={"type": "json_object"}` first; retries without if unsupported
+- **Client**: OpenAI SDK pointed at configurable base_url (Ollama, vLLM, OpenAI, etc.)
+- **Fallback**: Returns `{}` on failure → caller uses heuristic
+
+### Heuristic Service
+
+Regex-based fallback when LLM fails:
+- Total: `TOTAL`, `AMOUNT DUE`, `BALANCE`, `GRAND TOTAL`
+- Tax: `TAX`, `HST`, `GST`, `PST`, `VAT`
+- Date: `YYYY-MM-DD` or `MM/DD/YYYY`
+- Store name: first non-decorative line
+- Line items: `<name> <price>` pattern (max 50)
+
+### Fuzzy Matching
+
+| Score Range | Action |
+|---|---|
+| >= 85 (configurable) | **Auto-link**: set `canonical_item_id`, add as alias |
+| 60–84 (configurable) | **Suggest**: create `MatchSuggestion(status=pending)` |
+| < 60 | **No match**: create new `CanonicalItem` |
+
+Scoring: `max(token_sort_ratio, partial_ratio)` via RapidFuzz.
+
+### Normalisation
+
+**Store names**: `normalize_store_name()` returns `(normalized_name, detected_chain)`. Strips store/location numbers (regex `#?\d{3,}$`), common suffixes ("supercenter", "supercentre", "superstore", "express"), and matches against 40+ chain prefix patterns. Known chains return canonical name + chain; unknown stores → `title()` case + `None`.
+
+**Item names**: Collapse whitespace, strip trailing junk (weights, barcodes, SKUs), `title()` case.
+
+### Store Matching
+
+`StoreMatchingService` resolves OCR store names through a 5-step cascade:
+
+| Step | Condition | Action |
+|---|---|---|
+| 1 | Exact name match | Link to existing store |
+| 2 | Exact alias match | Link via `StoreAlias` lookup |
+| 3 | Fuzzy score >= 88 | Auto-link + create alias |
+| 4 | Fuzzy score >= 65 | Create `StoreMergeSuggestion` for review |
+| 5 | No match | Create new `Store` |
+
+Address-aware: same chain + different addresses → separate stores (shared chain). Same chain + one address missing → suggestion for review. Alias seeding: when the LLM cleans an OCR name, the raw version is immediately added as a `StoreAlias(source="ocr")`.
+
+---
+
+## 11. Authentication & Authorization
+
+### Session-Based Auth
+
+1. **Register**: bcrypt hash → create User (first user = admin) → create UserSession (30-day expiry) → set `session_id` cookie
+2. **Login**: verify password → create session → set cookie
+3. **Logout**: delete session row → delete cookie
+4. **`GET /auth/me`**: validate session → return user
+
+### Middleware Gate
+
+`AuthMiddleware` requires `session_id` on all `/api/*` except `/api/v1/auth/*`, `/docs`, `/openapi.json`.
+
+### Role-Based Access
+
+- **Admin**: Required for `/admin/*` endpoints
+- **Owner**: Receipt update/delete requires ownership; household management requires owner
+
+### Household Invites
+
+Signed tokens via `URLSafeTimedSerializer`, salt `"household-invite"`, max age 7 days.
+
+---
+
+## 12. Real-Time Communication
+
+### WebSocket Endpoint
+
+`WS /ws/jobs?session_id=<token>`
+
+1. Validate session token
+2. Register connection keyed by `user_id`
+3. Loop: receive messages (ping/pong); on disconnect, unregister
+
+### Redis Pub/Sub Bridge
+
+The Celery task publishes job status changes to Redis channel `user:<user_id>:jobs`.
+The FastAPI process subscribes to channels for connected users and forwards to WebSocket clients.
+This decouples the worker from the WebSocket process.
+
+### Client Handling
+
+The frontend `WSService` parses incoming `ProcessingJob` objects and emits to subscribers.
+The `useJobNotifications` hook invalidates `["jobs"]` and `["receipts"]` query caches on updates.
+
+---
+
+## 13. File Storage
+
+### Directory Layout
+
+```
+data/
+├── receipts/<user_id>/<receipt_id>/
+│   ├── original.<ext>      # jpg, png, heic, pdf
+│   └── thumbnail.png       # first-page thumbnail
+├── thumbnails/              # additional thumbnails
+├── products/<item_id>/
+│   └── image.webp           # 512x512, 85% quality
+└── ledgerlens.db            # SQLite database
+```
+
+### Upload Limits
+
+- Receipt files: JPEG, PNG, HEIC, PDF
+- Product images: JPEG, PNG, WebP; max 5 MB; auto-resized to 512x512 WebP
+
+### Serving
+
+Files served via FastAPI `StaticFiles` at `/files/`, reverse-proxied by Nginx.
+Path safety: `storage.get_receipt_path()` validates paths fall under `DATA_DIR`.
+
+---
+
+## 14. Database Migrations
+
+### Alembic Configuration
+
+- Async SQLAlchemy driver
+- `render_as_batch=True` for SQLite `ALTER TABLE` compatibility
+- All models imported for autogenerate metadata
+- Runs via `asyncio.run`
+
+### Migration History
+
+1. `feded377c21d` — Initial schema (all 10 tables)
+2. `36e5776eb341` — Drop `is_default` from `model_configs`
+
+### SQLite Pragmas
+
+Applied at engine connect time:
+
+```sql
+PRAGMA journal_mode=WAL;
+PRAGMA busy_timeout=5000;
+PRAGMA foreign_keys=ON;
+PRAGMA synchronous=NORMAL;
+```
+
+---
+
+## 15. Testing
+
+### Backend
+
+| Layer | Tool | Approach |
+|---|---|---|
+| Unit (services) | pytest + pytest-asyncio | Mock repositories; test business logic |
+| Unit (repositories) | pytest + in-memory SQLite | Real DB queries |
+| Integration | pytest + httpx | Full request cycle with test DB |
+| Task | pytest + Celery eager mode | Synchronous execution |
+
+### Frontend
+
+| Layer | Tool | Approach |
+|---|---|---|
+| Component | Vitest + Testing Library | Render + assert DOM |
+| Hook | Vitest + renderHook | TanStack Query hooks |
+| Integration | Vitest + MSW | Mock API, page-level flows |
+
+---
+
+## 16. CI/CD
+
+### GitHub Actions (`ghcr-publish.yml`)
+
+- Triggers on semver tags (`v*`)
+- Builds single Docker image via multi-stage Dockerfile
+- Pushes to `ghcr.io/<owner>/ledgerlens2`
+- Generates changelog from git logs
+- Tags: semver (`1.0.0`, `1.0`), branch ref, SHA
+
+---
+
+## 17. Configuration & Environment
+
+### Settings (`app/core/config.py`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | `sqlite+aiosqlite:///./data/ledgerlens.db` | DB connection string |
+| `DATA_DIR` | `./data` | File storage root |
+| `LLM_BASE_URL` | `http://127.0.0.1:11434/v1` | OpenAI-compatible endpoint |
 | `LLM_MODEL` | `llama3.2` | Model name |
-| `LLM_API_KEY` | — | API key (optional) |
-| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Task queue broker |
-| `FUZZY_AUTO_LINK_THRESHOLD` | `85` | Product auto-link score |
-| `FUZZY_SUGGEST_THRESHOLD` | `60` | Product suggestion score |
-| `STORE_FUZZY_AUTO_LINK_THRESHOLD` | `88` | Store auto-link score (planned) |
-| `STORE_FUZZY_SUGGEST_THRESHOLD` | `65` | Store suggestion score (planned) |
+| `LLM_API_KEY` | `""` | API key (optional for Ollama) |
+| `LLM_TIMEOUT_SECONDS` | `30` | LLM request timeout |
+| `LLM_MAX_RETRIES` | `1` | LLM retry count |
+| `SECRET_KEY` | `change-me` | Session signing key |
+| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Redis broker URL |
+| `TASK_SOFT_TIME_LIMIT` | `300` | Celery soft timeout (seconds) |
+| `TASK_HARD_TIME_LIMIT` | `360` | Celery hard timeout (seconds) |
+| `GOOGLE_CSE_API_KEY` | `""` | Google Custom Search (optional) |
+| `GOOGLE_CSE_CX` | `""` | Google CSE engine ID (optional) |
+| `FUZZY_AUTO_LINK_THRESHOLD` | `85` | Auto-link score threshold (items) |
+| `FUZZY_SUGGEST_THRESHOLD` | `60` | Suggestion score threshold (items) |
+| `STORE_FUZZY_AUTO_LINK_THRESHOLD` | `88` | Auto-link score threshold (stores) |
+| `STORE_FUZZY_SUGGEST_THRESHOLD` | `65` | Suggestion score threshold (stores) |
+| `RETROACTIVE_BATCH_SIZE` | `200` | Items per retroactive scan |
+| `RETROACTIVE_INTERVAL_SECONDS` | `300` | Retroactive scan frequency |
 | `TESSERACT_LANG` | `eng` | OCR language |
-| `TESSERACT_PSM` | `6` | Tesseract page segmentation |
-| `TESSERACT_DPI` | `300` | OCR resolution |
-| `PUID` / `PGID` | `1000` | Container user/group IDs |
+| `TESSERACT_PSM` | `6` | Page segmentation mode |
+| `TESSERACT_DPI` | `300` | OCR DPI |
+
+### Docker Environment
+
+Inside the container, Redis is on `127.0.0.1:6379`. For LLM, point `LLM_BASE_URL` to an
+external Ollama instance (e.g. `http://host.docker.internal:11434/v1`).
