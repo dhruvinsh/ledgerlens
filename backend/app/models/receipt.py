@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -37,6 +37,9 @@ class Receipt(BaseMixin, Base):
     subtotal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tax: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    discount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    is_refund: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)

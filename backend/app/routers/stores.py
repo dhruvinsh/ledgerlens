@@ -5,13 +5,21 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.models.user import User
 from app.schemas.pagination import PaginatedResponse
-from app.schemas.store import StoreResponse, StoreUpdate
+from app.schemas.store import (
+    StoreAliasCreate,
+    StoreAliasResponse,
+    StoreMergeRequest,
+    StoreMergeSuggestionResponse,
+    StoreResponse,
+    StoreUpdate,
+)
 from app.services.store import StoreService
 
 router = APIRouter(prefix="/stores", tags=["stores"])
 
 
-def _to_response(store) -> StoreResponse:  # type: ignore[no-untyped-def]
+def _to_response(store, receipt_count: int = 0) -> StoreResponse:
+    aliases = [a.alias_name for a in store.aliases] if store.aliases else []
     return StoreResponse(
         id=store.id,
         name=store.name,
@@ -20,26 +28,90 @@ def _to_response(store) -> StoreResponse:  # type: ignore[no-untyped-def]
         latitude=store.latitude,
         longitude=store.longitude,
         is_verified=store.is_verified,
+        merged_into_id=store.merged_into_id,
+        aliases=aliases,
+        receipt_count=receipt_count,
         created_at=store.created_at.isoformat(),
     )
+
+
+# ── Core CRUD ──
 
 
 @router.get("", response_model=PaginatedResponse[StoreResponse])
 async def list_stores(
     search: str | None = Query(None),
+    chain: str | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[StoreResponse]:
     svc = StoreService(db)
-    stores, total = await svc.list_stores(search=search, page=page, per_page=per_page)
+    stores_with_counts, total = await svc.list_stores(
+        search=search, chain=chain, page=page, per_page=per_page
+    )
     return PaginatedResponse(
-        items=[_to_response(s) for s in stores],
+        items=[_to_response(store, count) for store, count in stores_with_counts],
         total=total,
         page=page,
         per_page=per_page,
     )
+
+
+@router.get("/merge-suggestions", response_model=PaginatedResponse[StoreMergeSuggestionResponse])
+async def list_merge_suggestions(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> PaginatedResponse[StoreMergeSuggestionResponse]:
+    svc = StoreService(db)
+    suggestions, total = await svc.suggestion_repo.list_pending(page, per_page)
+    items = [
+        StoreMergeSuggestionResponse(
+            id=s.id,
+            store_a=_to_response(s.store_a),
+            store_b=_to_response(s.store_b),
+            confidence=s.confidence,
+            status=s.status,
+            created_at=s.created_at.isoformat(),
+        )
+        for s in suggestions
+    ]
+    return PaginatedResponse(items=items, total=total, page=page, per_page=per_page)
+
+
+@router.post("/merge-suggestions/{suggestion_id}/accept", response_model=StoreResponse)
+async def accept_merge_suggestion(
+    suggestion_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> StoreResponse:
+    svc = StoreService(db)
+    store = await svc.accept_merge_suggestion(suggestion_id, admin.id)
+    return _to_response(store)
+
+
+@router.post("/merge-suggestions/{suggestion_id}/reject")
+async def reject_merge_suggestion(
+    suggestion_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    svc = StoreService(db)
+    await svc.reject_merge_suggestion(suggestion_id, admin.id)
+    return {"detail": "Suggestion rejected"}
+
+
+@router.post("/scan-duplicates")
+async def scan_duplicates(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, int]:
+    svc = StoreService(db)
+    count = await svc.scan_for_duplicates()
+    return {"new_suggestions": count}
 
 
 @router.get("/{store_id}", response_model=StoreResponse)
@@ -49,7 +121,7 @@ async def get_store(
     db: AsyncSession = Depends(get_db),
 ) -> StoreResponse:
     svc = StoreService(db)
-    store = await svc.get_by_id(store_id)
+    store = await svc.get_by_id_with_aliases(store_id)
     return _to_response(store)
 
 
@@ -63,3 +135,86 @@ async def update_store(
     svc = StoreService(db)
     store = await svc.update(store_id, body)
     return _to_response(store)
+
+
+@router.post("/{store_id}/merge", response_model=StoreResponse)
+async def merge_stores(
+    store_id: str,
+    body: StoreMergeRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> StoreResponse:
+    svc = StoreService(db)
+    store = await svc.merge_stores(store_id, body.duplicate_ids, admin.id)
+    await db.commit()
+    return _to_response(store)
+
+
+# ── Aliases ──
+
+
+@router.get("/{store_id}/aliases", response_model=list[StoreAliasResponse])
+async def list_aliases(
+    store_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[StoreAliasResponse]:
+    svc = StoreService(db)
+    await svc.get_by_id(store_id)  # validate exists
+    aliases = await svc.alias_repo.get_aliases_for_store(store_id)
+    return [
+        StoreAliasResponse(
+            id=a.id,
+            store_id=a.store_id,
+            alias_name=a.alias_name,
+            source=a.source,
+            created_at=a.created_at.isoformat(),
+        )
+        for a in aliases
+    ]
+
+
+@router.post("/{store_id}/aliases", response_model=StoreAliasResponse, status_code=201)
+async def add_alias(
+    store_id: str,
+    body: StoreAliasCreate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> StoreAliasResponse:
+    import uuid
+
+    from app.models.store_alias import StoreAlias
+
+    svc = StoreService(db)
+    await svc.get_by_id(store_id)  # validate exists
+
+    alias = StoreAlias(
+        id=str(uuid.uuid4()),
+        store_id=store_id,
+        alias_name=body.alias_name,
+        alias_name_lower=body.alias_name.lower(),
+        source="manual",
+    )
+    await svc.alias_repo.create(alias)
+    await db.commit()
+    return StoreAliasResponse(
+        id=alias.id,
+        store_id=alias.store_id,
+        alias_name=alias.alias_name,
+        source=alias.source,
+        created_at=alias.created_at.isoformat(),
+    )
+
+
+@router.delete("/{store_id}/aliases/{alias_id}")
+async def remove_alias(
+    store_id: str,
+    alias_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    svc = StoreService(db)
+    await svc.get_by_id(store_id)  # validate exists
+    await svc.alias_repo.delete_by_id(alias_id)
+    await db.commit()
+    return {"detail": "Alias removed"}

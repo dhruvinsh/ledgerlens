@@ -45,6 +45,9 @@ def _to_detail(r) -> ReceiptDetail:  # type: ignore[no-untyped-def]
         subtotal=r.subtotal,
         tax=r.tax,
         total=r.total,
+        discount=r.discount,
+        payment_method=r.payment_method,
+        is_refund=r.is_refund,
         source=r.source,
         status=r.status,
         file_path=r.file_path,
@@ -88,6 +91,7 @@ async def create_manual_receipt(
 async def list_receipts(
     status: str | None = Query(None),
     store_id: str | None = Query(None),
+    chain: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     sort_by: str = Query("created_at"),
@@ -101,6 +105,7 @@ async def list_receipts(
     filters = ReceiptFilters(
         status=status,
         store_id=store_id,
+        chain=chain,
         date_from=date_from,
         date_to=date_to,
         sort_by=sort_by,

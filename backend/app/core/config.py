@@ -24,9 +24,13 @@ class Settings(BaseSettings):
     GOOGLE_CSE_API_KEY: str = ""
     GOOGLE_CSE_CX: str = ""
 
-    # Fuzzy matching
+    # Fuzzy matching — products
     FUZZY_AUTO_LINK_THRESHOLD: int = 85
     FUZZY_SUGGEST_THRESHOLD: int = 60
+
+    # Fuzzy matching — stores
+    STORE_FUZZY_AUTO_LINK_THRESHOLD: int = 88
+    STORE_FUZZY_SUGGEST_THRESHOLD: int = 65
 
     # Retroactive matching
     RETROACTIVE_BATCH_SIZE: int = 200

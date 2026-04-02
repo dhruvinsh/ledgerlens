@@ -18,9 +18,14 @@ class LineItemResponse(BaseModel):
     canonical_item_id: str | None
     canonical_item: CanonicalItemSummary | None = None
     name: str
+    raw_name: str | None = None
     quantity: float
     unit_price: int | None
     total_price: int | None
+    discount: int | None = None
+    is_refund: bool = False
+    tax_code: str | None = None
+    weight_qty: str | None = None
     confidence: float | None
     position: int
     is_corrected: bool
@@ -33,6 +38,10 @@ class LineItemCreate(BaseModel):
     quantity: float = 1.0
     unit_price: int | None = None
     total_price: int | None = None
+    discount: int | None = None
+    is_refund: bool = False
+    tax_code: str | None = None
+    weight_qty: str | None = None
 
 
 class LineItemUpdate(BaseModel):
@@ -40,6 +49,10 @@ class LineItemUpdate(BaseModel):
     quantity: float | None = None
     unit_price: int | None = None
     total_price: int | None = None
+    discount: int | None = None
+    is_refund: bool | None = None
+    tax_code: str | None = None
+    weight_qty: str | None = None
     canonical_item_id: str | None = None
 
 
@@ -76,6 +89,9 @@ class ReceiptDetail(BaseModel):
     subtotal: int | None
     tax: int | None
     total: int | None
+    discount: int | None = None
+    payment_method: str | None = None
+    is_refund: bool = False
     source: str
     status: str
     file_path: str | None
@@ -99,6 +115,9 @@ class ManualReceiptCreate(BaseModel):
     subtotal: int | None = None
     tax: int | None = None
     total: int | None = None
+    discount: int | None = None
+    payment_method: str | None = None
+    is_refund: bool = False
     notes: str | None = None
     line_items: list[LineItemCreate] = []
 
@@ -109,6 +128,9 @@ class ReceiptUpdate(BaseModel):
     subtotal: int | None = None
     tax: int | None = None
     total: int | None = None
+    discount: int | None = None
+    payment_method: str | None = None
+    is_refund: bool | None = None
     notes: str | None = None
     status: str | None = None
 
@@ -116,6 +138,7 @@ class ReceiptUpdate(BaseModel):
 class ReceiptFilters(BaseModel):
     status: str | None = None
     store_id: str | None = None
+    chain: str | None = None
     date_from: str | None = None
     date_to: str | None = None
     sort_by: str = "created_at"

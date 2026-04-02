@@ -10,6 +10,7 @@ from app.models.base import BaseMixin
 
 if TYPE_CHECKING:
     from app.models.receipt import Receipt
+    from app.models.store_alias import StoreAlias
 
 
 class Store(BaseMixin, Base):
@@ -24,5 +25,14 @@ class Store(BaseMixin, Base):
         String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    merged_into_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
+    )
 
     receipts: Mapped[list[Receipt]] = relationship("Receipt", back_populates="store")
+    aliases: Mapped[list[StoreAlias]] = relationship(
+        "StoreAlias", back_populates="store", cascade="all, delete-orphan"
+    )
+    merged_into: Mapped[Store | None] = relationship(
+        "Store", remote_side="Store.id", foreign_keys=[merged_into_id]
+    )

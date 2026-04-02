@@ -2,7 +2,7 @@ from datetime import date
 
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.line_item import LineItem
 from app.models.receipt import Receipt
@@ -42,6 +42,7 @@ class ReceiptRepository:
         visibility: ColumnElement[bool],
         status: str | None = None,
         store_id: str | None = None,
+        chain: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
         sort_by: str = "created_at",
@@ -49,7 +50,16 @@ class ReceiptRepository:
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[Receipt], int]:
-        query = select(Receipt).options(joinedload(Receipt.store)).where(visibility)
+        if chain:
+            # Use selectinload to avoid conflict with explicit join for chain filter
+            query = (
+                select(Receipt)
+                .options(selectinload(Receipt.store))
+                .join(Store, Receipt.store_id == Store.id)
+                .where(visibility, func.lower(Store.chain) == chain.lower())
+            )
+        else:
+            query = select(Receipt).options(joinedload(Receipt.store)).where(visibility)
 
         if status:
             query = query.where(Receipt.status == status)

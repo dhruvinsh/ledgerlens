@@ -1,5 +1,6 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.store import Store
 
@@ -26,3 +27,16 @@ class StoreRepository:
     async def list_all(self) -> list[Store]:
         result = await self.db.execute(select(Store).order_by(Store.name))
         return list(result.scalars().all())
+
+    async def list_active(self) -> list[Store]:
+        """All stores where merged_into_id IS NULL, with aliases eager-loaded."""
+        result = await self.db.execute(
+            select(Store)
+            .options(selectinload(Store.aliases))
+            .where(Store.merged_into_id.is_(None))
+            .order_by(Store.name)
+        )
+        return list(result.scalars().unique().all())
+
+    async def update(self, store: Store) -> None:
+        await self.db.flush()

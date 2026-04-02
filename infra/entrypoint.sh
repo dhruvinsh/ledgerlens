@@ -27,6 +27,15 @@ cd /app/backend
 echo "Running database migrations..."
 su -s /bin/sh appuser -c "umask $UMASK && PATH=/app/backend/.venv/bin:\$PATH alembic upgrade head"
 
+# ── One-time data seeds (marker file prevents re-runs) ──────
+SEED_MARKER="$DATA_DIR/.seed_store_aliases_done"
+if [ ! -f "$SEED_MARKER" ]; then
+    echo "Running one-time store alias seed..."
+    su -s /bin/sh appuser -c "umask $UMASK && cd /app/backend && PATH=/app/backend/.venv/bin:\$PATH python -m scripts.seed_store_aliases" \
+        && touch "$SEED_MARKER" \
+        && chown "$PUID:$PGID" "$SEED_MARKER"
+fi
+
 # ── Inject user= into supervisord programs ──────────────────
 CONF=/etc/supervisor/conf.d/supervisord.conf
 sed -i "s|^\(\[program:backend\]\)|\1\nuser=appuser|" "$CONF"

@@ -5,19 +5,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ForbiddenError, ReceiptNotFoundError
 from app.models.line_item import LineItem
 from app.models.receipt import Receipt
-from app.models.store import Store
 from app.models.user import User
 from app.repositories.line_item import LineItemRepository
 from app.repositories.receipt import ReceiptRepository
-from app.repositories.store import StoreRepository
 from app.schemas.receipt import (
-    LineItemCreate,
     ManualReceiptCreate,
     ReceiptFilters,
     ReceiptUpdate,
 )
 from app.services import storage
 from app.services.scope import receipt_visibility
+from app.services.store_matching import StoreMatchingService
 
 
 class ReceiptService:
@@ -25,7 +23,6 @@ class ReceiptService:
         self.db = db
         self.user = user
         self.repo = ReceiptRepository(db)
-        self.store_repo = StoreRepository(db)
         self.line_item_repo = LineItemRepository(db)
 
     async def upload(self, file_content: bytes, filename: str, source: str) -> Receipt:
@@ -54,13 +51,11 @@ class ReceiptService:
     async def create_manual(self, data: ManualReceiptCreate) -> Receipt:
         store = None
         if data.store_name:
-            store = await self.store_repo.get_by_name(data.store_name)
-            if not store:
-                store = Store(
-                    name=data.store_name,
-                    created_by=self.user.id,
-                )
-                await self.store_repo.create(store)
+            store_matching_svc = StoreMatchingService(self.db)
+            store = await store_matching_svc.find_or_create_store(
+                raw_name=data.store_name,
+                created_by=self.user.id,
+            )
 
         receipt = Receipt(
             user_id=self.user.id,
@@ -75,6 +70,9 @@ class ReceiptService:
             subtotal=data.subtotal,
             tax=data.tax,
             total=data.total,
+            discount=data.discount,
+            payment_method=data.payment_method,
+            is_refund=data.is_refund,
             notes=data.notes,
             source="manual",
             status="processed",
@@ -82,13 +80,20 @@ class ReceiptService:
         await self.repo.create(receipt)
 
         if data.line_items:
+            import uuid
+
             items = [
                 LineItem(
+                    id=str(uuid.uuid4()),
                     receipt_id=receipt.id,
                     name=li.name,
                     quantity=li.quantity,
                     unit_price=li.unit_price,
                     total_price=li.total_price,
+                    discount=li.discount,
+                    is_refund=li.is_refund,
+                    tax_code=li.tax_code,
+                    weight_qty=li.weight_qty,
                 )
                 for li in data.line_items
             ]
@@ -114,6 +119,7 @@ class ReceiptService:
             visibility=vis,
             status=filters.status,
             store_id=filters.store_id,
+            chain=filters.chain,
             date_from=filters.date_from,
             date_to=filters.date_to,
             sort_by=filters.sort_by,
@@ -136,6 +142,12 @@ class ReceiptService:
             receipt.tax = data.tax
         if data.total is not None:
             receipt.total = data.total
+        if data.discount is not None:
+            receipt.discount = data.discount
+        if data.payment_method is not None:
+            receipt.payment_method = data.payment_method
+        if data.is_refund is not None:
+            receipt.is_refund = data.is_refund
         if data.notes is not None:
             receipt.notes = data.notes
         if data.status is not None:

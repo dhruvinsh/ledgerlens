@@ -7,15 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.line_item import LineItem
 from app.models.receipt import Receipt
-from app.models.store import Store
+from app.repositories.canonical_item import CanonicalItemRepository
 from app.repositories.line_item import LineItemRepository
 from app.repositories.store import StoreRepository
 from app.services import heuristic as heuristic_svc
 from app.services import llm as llm_svc
 from app.services import ocr as ocr_svc
 from app.services.matching import MatchingService
-from app.services.normalization import normalize_store_name
+from app.services.normalization import normalize_item_name
 from app.services.storage import get_receipt_path
+from app.services.store_matching import StoreMatchingService
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,16 @@ async def run_extraction(
         receipt.status = "failed"
         return
 
+    # ── Gather known entities for LLM context ──
+    store_repo = StoreRepository(db)
+    item_repo = CanonicalItemRepository(db)
+
+    existing_stores = await store_repo.list_all()
+    known_stores = [s.name for s in existing_stores]
+
+    all_items = await item_repo.list_all()
+    known_products = [item.name for item in all_items]
+
     # ── LLM extraction ──
     data = llm_svc.extract_receipt_data(
         raw_text,
@@ -63,6 +74,8 @@ async def run_extraction(
         api_key=model_api_key,
         timeout=model_timeout,
         max_retries=model_max_retries,
+        known_stores=known_stores,
+        known_products=known_products,
     )
 
     # Fall back to heuristic if LLM returned nothing usable
@@ -83,18 +96,17 @@ async def run_extraction(
         logger.info("LLM extraction successful for receipt %s", receipt.id)
         receipt.extraction_source = "llm"
 
-    # ── Normalize store ──
-    store_repo = StoreRepository(db)
-    if data.get("store_name"):
-        store_name = normalize_store_name(data["store_name"])
-        store = await store_repo.get_by_name(store_name)
-        if not store:
-            store = Store(
-                name=store_name,
-                address=data.get("store_address"),
-                created_by=receipt.user_id,
-            )
-            await store_repo.create(store)
+    # ── Normalize & match store ──
+    store_name = data.get("store_name")
+    raw_store_name = data.get("raw_store_name") or store_name
+    if store_name:
+        store_matching_svc = StoreMatchingService(db)
+        store = await store_matching_svc.find_or_create_store(
+            raw_name=raw_store_name or store_name,
+            address=data.get("store_address"),
+            chain=data.get("store_chain"),
+            created_by=receipt.user_id,
+        )
         receipt.store_id = store.id
 
     # ── Set receipt fields ──
@@ -110,6 +122,9 @@ async def run_extraction(
     receipt.subtotal = data.get("subtotal_cents")
     receipt.tax = data.get("tax_cents")
     receipt.total = data.get("total_cents")
+    receipt.discount = data.get("discount_total_cents")
+    receipt.payment_method = data.get("payment_method")
+    receipt.is_refund = data.get("is_refund_receipt", False)
 
     # ── Delete existing line items and create new ones ──
     line_item_repo = LineItemRepository(db)
@@ -119,19 +134,36 @@ async def run_extraction(
     raw_items = data.get("line_items", [])
 
     for i, raw_item in enumerate(raw_items):
+        raw_name = raw_item.get("raw_name")
+        clean_name = raw_item.get("name", "Unknown")
+
         li = LineItem(
             id=str(uuid.uuid4()),
             receipt_id=receipt.id,
-            name=raw_item.get("name", "Unknown"),
+            name=clean_name,
+            raw_name=raw_name,
             quantity=raw_item.get("quantity", 1.0),
             unit_price=raw_item.get("unit_price_cents"),
             total_price=raw_item.get("total_price_cents"),
+            discount=raw_item.get("discount_cents"),
+            is_refund=raw_item.get("is_refund", False),
+            tax_code=raw_item.get("tax_code"),
+            weight_qty=raw_item.get("weight_qty"),
             position=i,
         )
         db.add(li)
         await db.flush()
 
         # Match to canonical item
-        await matching_svc.find_or_create_canonical_item(li.name, li)
+        canonical = await matching_svc.find_or_create_canonical_item(clean_name, li)
+
+        # Alias seeding: if raw OCR name differs from canonical, add it as an alias
+        if canonical and raw_name:
+            normalized_raw = normalize_item_name(raw_name)
+            if normalized_raw.lower() != canonical.name.lower():
+                existing_aliases = [a.lower() for a in (canonical.aliases or [])]
+                if normalized_raw.lower() not in existing_aliases:
+                    canonical.aliases = (canonical.aliases or []) + [normalized_raw]
+                    await item_repo.update(canonical)
 
     receipt.status = "processed"

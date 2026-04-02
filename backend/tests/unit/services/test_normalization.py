@@ -2,21 +2,21 @@ from app.services.normalization import normalize_item_name, normalize_store_name
 
 
 def test_walmart_variants():
-    assert normalize_store_name("walmart supercenter #1234") == "Walmart"
-    assert normalize_store_name("WAL-MART STORE") == "Walmart"
-    assert normalize_store_name("Walmart") == "Walmart"
+    assert normalize_store_name("walmart supercenter #1234") == ("Walmart", "Walmart")
+    assert normalize_store_name("WAL-MART STORE") == ("Walmart", "Walmart")
+    assert normalize_store_name("Walmart") == ("Walmart", "Walmart")
 
 
 def test_known_chains():
-    assert normalize_store_name("costco wholesale") == "Costco"
-    assert normalize_store_name("LOBLAWS #456") == "Loblaws"
-    assert normalize_store_name("no frills east side") == "No Frills"
-    assert normalize_store_name("shoppers drug mart downtown") == "Shoppers Drug Mart"
+    assert normalize_store_name("costco wholesale") == ("Costco", "Costco")
+    assert normalize_store_name("LOBLAWS #456") == ("Loblaws", "Loblaws")
+    assert normalize_store_name("no frills east side") == ("No Frills", "No Frills")
+    assert normalize_store_name("shoppers drug mart downtown") == ("Shoppers Drug Mart", "Shoppers Drug Mart")
 
 
 def test_unknown_store_title_case():
-    assert normalize_store_name("bob's corner store") == "Bob'S Corner Store"
-    assert normalize_store_name("ACME FOODS") == "Acme Foods"
+    assert normalize_store_name("bob's corner store") == ("Bob'S Corner Store", None)
+    assert normalize_store_name("ACME FOODS") == ("Acme Foods", None)
 
 
 def test_item_name_collapse_whitespace():
