@@ -79,8 +79,11 @@ class AdminService:
         mc = await self.get_model(config_id)
 
         try:
+            headers = {}
+            if mc.api_key_encrypted:
+                headers["Authorization"] = f"Bearer {mc.api_key_encrypted}"
             async with httpx.AsyncClient(timeout=mc.timeout_seconds) as client:
-                resp = await client.get(f"{mc.base_url}/models")
+                resp = await client.get(f"{mc.base_url}/models", headers=headers)
                 resp.raise_for_status()
 
             mc.health_status = "healthy"

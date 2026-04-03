@@ -36,8 +36,10 @@ export function useDeleteModel() {
 }
 
 export function useTestModel() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       api.post<{ status: string; error?: string }>(`/admin/models/${id}/test`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "models"] }),
   });
 }

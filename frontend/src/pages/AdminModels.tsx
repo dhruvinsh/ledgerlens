@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Plus, Trash2, TestTube, CheckCircle, XCircle, Power } from "lucide-react";
+import { Plus, Trash2, TestTube, CheckCircle, XCircle, Power, Pencil } from "lucide-react";
 import { useModels, useCreateModel, useUpdateModel, useDeleteModel, useTestModel } from "@/hooks/useAdmin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import type { ModelConfig } from "@/lib/types";
+
+const BLANK_FORM = { name: "", provider_type: "openai", base_url: "", model_name: "", api_key: "" };
 
 export default function AdminModels() {
   const { data: models, isLoading } = useModels();
@@ -15,18 +18,34 @@ export default function AdminModels() {
   const deleteModel = useDeleteModel();
   const testModel = useTestModel();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    provider_type: "openai",
-    base_url: "",
-    model_name: "",
-    api_key: "",
-  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(BLANK_FORM);
 
   const handleCreate = async () => {
     await createModel.mutateAsync(form);
     setShowForm(false);
-    setForm({ name: "", provider_type: "openai", base_url: "", model_name: "", api_key: "" });
+    setForm(BLANK_FORM);
+  };
+
+  const handleEdit = (mc: ModelConfig) => {
+    setEditingId(mc.id);
+    setForm({ name: mc.name, provider_type: mc.provider_type, base_url: mc.base_url, model_name: mc.model_name, api_key: "" });
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
+    const payload: Record<string, unknown> = { ...form };
+    if (!payload.api_key) delete payload.api_key;
+    await updateModel.mutateAsync({ id: editingId!, ...payload });
+    setEditingId(null);
+    setShowForm(false);
+    setForm(BLANK_FORM);
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
+    setShowForm(false);
+    setForm(BLANK_FORM);
   };
 
   if (isLoading) return <Spinner className="mt-20" />;
@@ -35,7 +54,7 @@ export default function AdminModels() {
     <div className="space-y-6 p-6 pb-24 md:pb-6">
       <div className="flex items-center justify-between">
         <h1 className="font-serif text-2xl">LLM Models</h1>
-        <Button size="sm" onClick={() => setShowForm(!showForm)}>
+        <Button size="sm" onClick={() => { setEditingId(null); setForm(BLANK_FORM); setShowForm(!showForm || !!editingId); }}>
           <Plus size={14} /> Add Model
         </Button>
       </div>
@@ -52,12 +71,18 @@ export default function AdminModels() {
               <Input label="Provider Type" value={form.provider_type} onChange={(e) => setForm({ ...form, provider_type: e.target.value })} placeholder="openai" />
               <Input label="Base URL" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="http://localhost:11434/v1" />
               <Input label="Model Name" value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="llama3.2" />
-              <Input label="API Key" type="password" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="Optional" />
+              <Input label="API Key" type="password" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder={editingId ? "Leave blank to keep existing key" : "Optional"} />
               <div className="flex items-end gap-2">
-                <Button onClick={handleCreate} disabled={createModel.isPending || !form.name || !form.base_url}>
-                  {createModel.isPending ? "Creating..." : "Create"}
-                </Button>
-                <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
+                {editingId ? (
+                  <Button onClick={handleSave} disabled={updateModel.isPending || !form.name || !form.base_url}>
+                    {updateModel.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                ) : (
+                  <Button onClick={handleCreate} disabled={createModel.isPending || !form.name || !form.base_url}>
+                    {createModel.isPending ? "Creating..." : "Create"}
+                  </Button>
+                )}
+                <Button variant="outline" onClick={handleCancel}>Cancel</Button>
               </div>
             </CardContent>
           </Card>
@@ -112,6 +137,13 @@ export default function AdminModels() {
                       onClick={() => testModel.mutate(mc.id)}
                     >
                       <TestTube size={14} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(mc)}
+                    >
+                      <Pencil size={14} />
                     </Button>
                     <Button
                       variant="ghost"
