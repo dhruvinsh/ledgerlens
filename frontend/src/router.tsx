@@ -2,6 +2,7 @@ import { lazy } from "react";
 import { createBrowserRouter, Navigate } from "react-router";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
+import { RouteError } from "@/components/layout/RouteError";
 
 const Login = lazy(() => import("@/pages/Login"));
 const Register = lazy(() => import("@/pages/Register"));
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
     children: [
       {
         element: <AppShell />,
+        errorElement: <RouteError />,
         children: [
           { path: "/dashboard", element: <Dashboard /> },
           { path: "/receipts", element: <Receipts /> },

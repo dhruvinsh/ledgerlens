@@ -60,6 +60,14 @@ export default function StoreDetail() {
     if (chain !== (store.chain ?? "")) setChain(store.chain ?? "");
   }
 
+  const searchStores = useCallback(async (query: string): Promise<Store[]> => {
+    const res = await api.get<PaginatedResponse<Store>>("/stores", {
+      search: query,
+      per_page: "10",
+    });
+    return res.items.filter((s) => s.id !== id);
+  }, [id]);
+
   if (isLoading) return <Spinner className="mt-20" />;
   if (!store) return <p className="p-6 text-text-muted">Store not found.</p>;
 
@@ -110,14 +118,6 @@ export default function StoreDetail() {
       });
     }
   };
-
-  const searchStores = useCallback(async (query: string): Promise<Store[]> => {
-    const res = await api.get<PaginatedResponse<Store>>("/stores", {
-      search: query,
-      per_page: "10",
-    });
-    return res.items.filter((s) => s.id !== store.id);
-  }, [store.id]);
 
   const handleDelete = async () => {
     try {
