@@ -152,6 +152,10 @@ ledgerlens2/
 │   │   ├── pages/                     # 17 page components
 │   │   ├── services/                  # api.ts, websocket.ts
 │   │   └── stores/                    # appStore.ts, toastStore.ts (Zustand)
+│   ├── public/
+│   │   ├── favicon.svg
+│   │   ├── manifest.json              # PWA web app manifest (start_url = /)
+│   │   └── fonts/                     # Self-hosted Satoshi variable font
 │   ├── index.html
 │   ├── vite.config.ts
 │   ├── tsconfig.json
@@ -432,6 +436,16 @@ All page components are lazy-loaded via `React.lazy`.
 **Mobile bottom tab bar** (5 items, `navItems.slice(0, 5)`): Dashboard, Receipts, Review, Products, Stores. Prices is accessible from ProductDetail via deep link (`/price-tracker?item={id}`). Settings has a gear icon in the mobile header bar.
 
 **Review badge**: `useReviewCounts()` polls `GET /review/counts` every 60s (admin-only, gated by `user.role`). Combined pending count rendered as accent-colored pill on the Review nav icon in both sidebar and tab bar.
+
+### PWA Configuration
+
+`public/manifest.json` configures the installable PWA:
+
+- `start_url: "/"` — on a fresh launch (app killed/closed, opened from home screen icon), the browser navigates to `/`, which the router immediately redirects to `/dashboard`.
+- `display: "standalone"` — hides browser chrome for a native app feel.
+- When resuming via the OS app switcher (app backgrounded, not killed), the browser restores the existing URL. `start_url` is not consulted in this case; the user resumes where they left off.
+
+`index.html` includes the PWA meta tags required for iOS standalone mode (`apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`) and `viewport-fit=cover` for notch/safe-area support.
 
 ### State Management
 
