@@ -1,5 +1,7 @@
+import logging
 from datetime import date
 
+from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ForbiddenError, ReceiptNotFoundError
@@ -16,6 +18,26 @@ from app.schemas.receipt import (
 from app.services import storage
 from app.services.scope import receipt_visibility
 from app.services.store_matching import StoreMatchingService
+
+logger = logging.getLogger(__name__)
+
+# Batch upload constants
+_FILE_SIGNATURES: dict[bytes, str] = {
+    b"\x25\x50\x44\x46": "application/pdf",  # %PDF
+    b"\xff\xd8\xff": "image/jpeg",  # JPEG
+    b"\x89\x50\x4e\x47": "image/png",  # PNG
+}
+_ALLOWED_BATCH_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
+_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB per file
+_MAX_BATCH_TOTAL_SIZE = 50 * 1024 * 1024  # 50 MB aggregate
+
+
+def _validate_magic_bytes(content: bytes) -> str | None:
+    """Return detected content type or None if unrecognized."""
+    for sig, ctype in _FILE_SIGNATURES.items():
+        if content[: len(sig)] == sig:
+            return ctype
+    return None
 
 
 class ReceiptService:
@@ -47,6 +69,55 @@ class ReceiptService:
 
         await enqueue_receipt(receipt.id, self.db)
         return receipt
+
+    async def upload_batch(
+        self, files: list[UploadFile], source: str
+    ) -> tuple[list[Receipt], list[dict[str, str]]]:
+        """Upload multiple receipt files. Returns (receipts, errors) for partial success."""
+        receipts: list[Receipt] = []
+        errors: list[dict[str, str]] = []
+        accepted_bytes = 0
+
+        for f in files:
+            filename = f.filename or "upload.jpg"
+
+            # Fast pre-filter on content type (client-supplied, not authoritative)
+            if f.content_type not in _ALLOWED_BATCH_CONTENT_TYPES:
+                errors.append(
+                    {"filename": filename, "detail": f"Unsupported file type: {f.content_type}"}
+                )
+                continue
+
+            # Read one file at a time — don't buffer all into memory
+            content = await f.read()
+
+            # Per-file size limit
+            if len(content) > _MAX_FILE_SIZE:
+                errors.append({"filename": filename, "detail": "File exceeds 10MB limit"})
+                continue
+
+            # Magic byte validation (authoritative — content_type is client-supplied)
+            detected = _validate_magic_bytes(content)
+            if detected is None:
+                errors.append(
+                    {"filename": filename, "detail": "File content does not match a supported format"}
+                )
+                continue
+
+            # Aggregate size — check before adding, increment before upload attempt
+            if accepted_bytes + len(content) > _MAX_BATCH_TOTAL_SIZE:
+                errors.append({"filename": filename, "detail": "Batch size limit reached"})
+                continue
+            accepted_bytes += len(content)
+
+            try:
+                receipt = await self.upload(content, filename, source)
+                receipts.append(receipt)
+            except Exception as e:
+                logger.warning("Batch upload failed for %s: %s", filename, e)
+                errors.append({"filename": filename, "detail": str(e)})
+
+        return receipts, errors
 
     async def create_manual(self, data: ManualReceiptCreate) -> Receipt:
         store = None

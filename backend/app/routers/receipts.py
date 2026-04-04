@@ -8,6 +8,8 @@ from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.pagination import PaginatedResponse
 from app.schemas.receipt import (
+    BatchUploadError,
+    BatchUploadResponse,
     ManualReceiptCreate,
     ReceiptDetail,
     ReceiptFilters,
@@ -74,6 +76,29 @@ async def upload_receipt(
     content = await file.read()
     receipt = await svc.upload(content, file.filename or "upload.jpg", source)
     return _to_list_item(receipt)
+
+
+MAX_BATCH_FILES = 20
+
+
+@router.post("/batch", response_model=BatchUploadResponse, status_code=201)
+async def upload_receipt_batch(
+    files: list[UploadFile] = File(...),
+    source: Literal["camera", "upload"] = Form("upload"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> BatchUploadResponse:
+    if len(files) > MAX_BATCH_FILES:
+        from app.core.exceptions import ValidationError
+
+        raise ValidationError(f"Maximum {MAX_BATCH_FILES} files per batch")
+
+    svc = ReceiptService(db, user)
+    receipts, errors = await svc.upload_batch(files, source)
+    return BatchUploadResponse(
+        receipts=[_to_list_item(r) for r in receipts],
+        errors=[BatchUploadError(**e) for e in errors],
+    )
 
 
 @router.post("/manual", response_model=ReceiptDetail, status_code=201)

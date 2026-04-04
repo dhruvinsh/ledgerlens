@@ -1,11 +1,25 @@
 from collections.abc import AsyncGenerator
+from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.database import Base, get_db
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def _mock_celery_task():
+    """Prevent Celery tasks from hitting a real Redis broker in tests."""
+    mock_result = MagicMock()
+    mock_result.id = "test-celery-task-id"
+    with patch(
+        "app.tasks.receipt_processing.process_receipt_task.delay",
+        return_value=mock_result,
+    ):
+        yield
 
 
 @pytest_asyncio.fixture

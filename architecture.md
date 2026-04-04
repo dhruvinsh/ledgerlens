@@ -586,7 +586,8 @@ All endpoints under `/api/v1`. Auth via `session_id` cookie (httpOnly, sameSite=
 | | POST | `/auth/login` | Login |
 | | POST | `/auth/logout` | Logout |
 | | GET | `/auth/me` | Current user info |
-| **Receipts** | POST | `/receipts` | Upload receipt (multipart) |
+| **Receipts** | POST | `/receipts` | Upload single receipt (multipart) |
+| | POST | `/receipts/batch` | Upload multiple receipts (multipart, max 20) |
 | | POST | `/receipts/manual` | Create manual receipt |
 | | GET | `/receipts` | List with filters + pagination |
 | | GET | `/receipts/:id` | Receipt detail with line items |
@@ -665,6 +666,15 @@ All endpoints under `/api/v1`. Auth via `session_id` cookie (httpOnly, sameSite=
 8. Set receipt `status=completed`, job `status=completed`
 9. Publish status to Redis pub/sub → WebSocket push
 10. On error: set `status=failed` with error message
+
+### Batch Uploads
+
+The `POST /receipts/batch` endpoint accepts up to 20 files in a single multipart request.
+Each file is validated (magic bytes, per-file 10 MB limit, aggregate 50 MB limit), then
+processed through the existing `upload()` → `enqueue_receipt()` path. This creates N
+independent `ProcessingJob` records in the Celery queue. With `concurrency=1`, the worker
+processes them sequentially — no configuration changes needed. Partial success is supported:
+the response includes both successful receipts and per-file errors.
 
 ### Retroactive Matching
 

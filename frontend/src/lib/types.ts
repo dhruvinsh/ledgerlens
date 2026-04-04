@@ -158,6 +158,18 @@ export interface ModelConfig {
   last_health_check: string | null;
 }
 
+// ── Batch upload types ──
+
+export interface BatchUploadError {
+  filename: string;
+  detail: string;
+}
+
+export interface BatchUploadResponse {
+  receipts: Receipt[];
+  errors: BatchUploadError[];
+}
+
 // ── API types ──
 
 export interface PaginatedResponse<T> {

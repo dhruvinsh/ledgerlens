@@ -65,6 +65,44 @@ class ApiClient {
   upload<T>(path: string, formData: FormData): Promise<T> {
     return this.request<T>("POST", path, { body: formData });
   }
+
+  uploadWithProgress<T>(
+    path: string,
+    formData: FormData,
+    onProgress?: (pct: number) => void,
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${this.baseUrl}${path}`);
+      xhr.withCredentials = true;
+
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable)
+            onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status === 401) {
+          window.location.href = "/login";
+          return reject(new Error("Unauthorized"));
+        }
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            return resolve(data as T);
+          }
+          return reject(new Error(data.detail ?? "Upload failed"));
+        } catch {
+          return reject(new Error("Failed to parse server response"));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.send(formData);
+    });
+  }
 }
 
 export const api = new ApiClient();

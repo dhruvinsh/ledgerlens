@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
-import type { PaginatedResponse, Receipt } from "@/lib/types";
+import type { BatchUploadResponse, PaginatedResponse, Receipt } from "@/lib/types";
 
 interface ReceiptFilters {
   status?: string;
@@ -34,6 +34,26 @@ export function useUploadReceipt() {
   return useMutation({
     mutationFn: (formData: FormData) => api.upload<Receipt>("/receipts", formData),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["receipts"] }),
+  });
+}
+
+export function useUploadReceiptBatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      formData: FormData;
+      onProgress?: (pct: number) => void;
+    }) =>
+      api.uploadWithProgress<BatchUploadResponse>(
+        "/receipts/batch",
+        args.formData,
+        args.onProgress,
+      ),
+    onSuccess: (data) => {
+      if (data.receipts.length > 0) {
+        qc.invalidateQueries({ queryKey: ["receipts"] });
+      }
+    },
   });
 }
 

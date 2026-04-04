@@ -135,6 +135,16 @@ class ReceiptUpdate(BaseModel):
     status: str | None = None
 
 
+class BatchUploadError(BaseModel):
+    filename: str
+    detail: str
+
+
+class BatchUploadResponse(BaseModel):
+    receipts: list[ReceiptListItem]
+    errors: list[BatchUploadError]
+
+
 class ReceiptFilters(BaseModel):
     status: str | None = None
     store_id: str | None = None
