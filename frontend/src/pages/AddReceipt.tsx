@@ -6,14 +6,15 @@ import { useUploadReceipt } from "@/hooks/useReceipts";
 import { useToastStore } from "@/stores/toastStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CameraCapture } from "@/components/CameraCapture";
 
 export default function AddReceipt() {
   const navigate = useNavigate();
   const upload = useUploadReceipt();
   const addToast = useToastStore((s) => s.addToast);
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const handleFile = useCallback(
     async (file: File, source: "camera" | "upload") => {
@@ -103,7 +104,7 @@ export default function AddReceipt() {
           <Button
             variant="outline"
             className="flex-1"
-            onClick={() => cameraRef.current?.click()}
+            onClick={() => setCameraOpen(true)}
           >
             <Camera size={18} /> Take Photo
           </Button>
@@ -116,18 +117,17 @@ export default function AddReceipt() {
           </Button>
         </div>
 
-        <input
-          ref={cameraRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file, "camera");
-          }}
-        />
       </motion.div>
+
+      {cameraOpen && (
+        <CameraCapture
+          onCapture={(file) => {
+            setCameraOpen(false);
+            handleFile(file, "camera");
+          }}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
     </div>
   );
 }
