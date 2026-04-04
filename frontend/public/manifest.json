@@ -4,8 +4,8 @@
   "description": "Track and analyze your grocery receipts",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "background_color": "#1a1816",
+  "theme_color": "#1a1816",
   "orientation": "portrait",
   "icons": [
     {

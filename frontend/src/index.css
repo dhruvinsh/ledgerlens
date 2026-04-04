@@ -37,14 +37,14 @@
   --color-text: #1c1917;
   --color-text-muted: #78716c;
 
-  --color-accent: #b45309;
-  --color-accent-hover: #92400e;
+  --color-accent: #d97706;
+  --color-accent-hover: #b45309;
   --color-accent-foreground: #ffffff;
 
   --color-success: #16a34a;
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
-  --color-warning: #d97706;
+  --color-warning: #f59e0b;
   --color-processing: #2563eb;
 
   --color-sidebar: #f5f2ed;
@@ -78,6 +78,16 @@
   --color-sidebar-foreground: #f5f0eb;
 }
 
+/* ── Smooth theme transition (applied only during user-initiated toggles) ── */
+
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease !important;
+  transition-delay: 0s !important;
+}
+
 /* ── Base styles ── */
 
 body {
@@ -98,6 +108,12 @@ body::before {
   opacity: 0.03;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='1' height='1' fill='%23000'/%3E%3C/svg%3E");
   z-index: 9999;
+}
+
+/* Paper texture swap for dark mode */
+.dark body::before {
+  opacity: 0.02;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='1' height='1' fill='%23fff'/%3E%3C/svg%3E");
 }
 
 #root {

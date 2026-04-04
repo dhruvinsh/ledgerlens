@@ -9,7 +9,19 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="LedgerLens" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#fafaf7" />
+    <script>
+      // Theme: apply dark class before first paint to prevent FOUC
+      (function () {
+        var pref = "auto";
+        try { pref = localStorage.getItem("ledgerlens-theme") || "auto"; } catch (e) {}
+        var isDark = pref === "dark" ||
+          (pref !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (isDark) document.documentElement.classList.add("dark");
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", isDark ? "#1a1816" : "#fafaf7");
+      })();
+    </script>
     <title>LedgerLens</title>
   </head>
   <body>

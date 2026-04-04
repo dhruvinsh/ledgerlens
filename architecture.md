@@ -147,11 +147,11 @@ ledgerlens2/
 │   │   │   ├── receipt/               # EnrichedLineItem, EditLineItemDialog
 │   │   │   ├── product/               # Product display components
 │   │   │   └── ui/                    # Card, Button, Input, Dialog, Badge, etc.
-│   │   ├── hooks/                     # TanStack Query hooks (8 modules)
+│   │   ├── hooks/                     # TanStack Query hooks (8 modules), useTheme
 │   │   ├── lib/                       # types.ts, utils.ts, money.ts
 │   │   ├── pages/                     # 17 page components
 │   │   ├── services/                  # api.ts, websocket.ts
-│   │   └── stores/                    # appStore.ts, toastStore.ts (Zustand)
+│   │   └── stores/                    # appStore.ts, toastStore.ts, themeStore.ts (Zustand)
 │   ├── public/
 │   │   ├── favicon.svg
 │   │   ├── manifest.json              # PWA web app manifest (start_url = /)
@@ -447,11 +447,25 @@ All page components are lazy-loaded via `React.lazy`.
 
 `index.html` includes the PWA meta tags required for iOS standalone mode (`apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`) and `viewport-fit=cover` for notch/safe-area support.
 
+### Theme System (Dark / Light / Auto)
+
+Four-layer architecture for theme switching:
+
+1. **FOUC prevention** — Inline `<script>` in `index.html` reads `localStorage("ledgerlens-theme")` and applies `.dark` class to `<html>` before first paint. Also sets `<meta name="theme-color">` to match.
+2. **`themeStore`** (Zustand) — Holds `preference` (`"light" | "dark" | "auto"`) persisted to localStorage, and `resolvedTheme` (`"light" | "dark"`) derived from preference + system media query.
+3. **`useTheme` hook** — Manages DOM side-effects: toggles `.dark` on `document.documentElement`, updates `<meta theme-color>`, listens to `matchMedia("prefers-color-scheme: dark")` for auto mode.
+4. **`ThemeToggle` component** — Segmented pill with `Light | Auto | Dark` labels, animated sliding indicator via Motion `layoutId`. Placed in desktop sidebar (bottom) and Settings page.
+
+CSS tokens in `index.css` use `@theme` (light defaults) with `.dark` overrides on custom properties. The `html.theme-transition` class provides smooth 300ms transitions during user-initiated toggles only.
+
+The PWA manifest uses a static dark `theme_color` / `background_color` (`#1a1816`) for less jarring splash screens. Runtime status bar color is dynamic via the `<meta theme-color>` tag.
+
 ### State Management
 
 | Store | Purpose |
 |---|---|
 | **`appStore`** (Zustand) | Auth state, user, UI preferences, dashboard filters, upload count |
+| **`themeStore`** (Zustand) | Theme preference (`light`/`dark`/`auto`), resolved theme, localStorage sync |
 | **`toastStore`** (Zustand) | Toast notification queue |
 | **TanStack Query** | All server data: receipts, items, stores, dashboard, jobs, suggestions, household, admin |
 

@@ -1,9 +1,10 @@
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { User, Users, Cpu, LogOut } from "lucide-react";
+import { User, Users, Cpu, LogOut, Palette } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 export default function Settings() {
   const { user, logout } = useAppStore();
@@ -34,6 +35,20 @@ export default function Settings() {
               <p className="text-sm text-text-muted">{user?.email}</p>
               <p className="text-xs text-text-muted capitalize">Role: {user?.role}</p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Theme */}
+        <Card>
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-3">
+              <Palette size={20} className="text-accent" />
+              <div>
+                <p className="text-sm font-medium">Theme</p>
+                <p className="text-xs text-text-muted">Light, dark, or match system</p>
+              </div>
+            </div>
+            <ThemeToggle />
           </CardContent>
         </Card>
 

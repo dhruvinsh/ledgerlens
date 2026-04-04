@@ -10,6 +10,7 @@ import {
   Settings,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { cn } from "@/lib/utils";
 import { useJobNotifications } from "@/hooks/useJobNotifications";
 import { useJobUpdates } from "@/hooks/useProcessingJobs";
@@ -75,6 +76,9 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
+        <div className="border-t border-border px-3 py-4">
+          <ThemeToggle className="w-full" />
+        </div>
       </aside>
 
       {/* Main content */}
