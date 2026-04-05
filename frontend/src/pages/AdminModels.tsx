@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import type { ModelConfig } from "@/lib/types";
 
-const BLANK_FORM = { name: "", provider_type: "openai", base_url: "", model_name: "", api_key: "" };
+const BLANK_FORM = { name: "", provider_type: "openai", base_url: "", model_name: "", api_key: "", supports_vision: false };
 
 export default function AdminModels() {
   const { data: models, isLoading } = useModels();
@@ -29,7 +29,7 @@ export default function AdminModels() {
 
   const handleEdit = (mc: ModelConfig) => {
     setEditingId(mc.id);
-    setForm({ name: mc.name, provider_type: mc.provider_type, base_url: mc.base_url, model_name: mc.model_name, api_key: "" });
+    setForm({ name: mc.name, provider_type: mc.provider_type, base_url: mc.base_url, model_name: mc.model_name, api_key: "", supports_vision: mc.supports_vision });
     setShowForm(true);
   };
 
@@ -72,6 +72,15 @@ export default function AdminModels() {
               <Input label="Base URL" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="http://localhost:11434/v1" />
               <Input label="Model Name" value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} placeholder="llama3.2" />
               <Input label="API Key" type="password" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder={editingId ? "Leave blank to keep existing key" : "Optional"} />
+              <label className="col-span-full flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.supports_vision}
+                  onChange={(e) => setForm({ ...form, supports_vision: e.target.checked })}
+                  className="accent-primary h-4 w-4"
+                />
+                Supports Vision — send receipt images directly to this model
+              </label>
               <div className="flex items-end gap-2">
                 {editingId ? (
                   <Button onClick={handleSave} disabled={updateModel.isPending || !form.name || !form.base_url}>
@@ -115,6 +124,7 @@ export default function AdminModels() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{mc.name}</span>
                       {mc.is_active && <Badge variant="success">Active</Badge>}
+                      {mc.supports_vision && <Badge variant="muted">Vision</Badge>}
                     </div>
                     <p className="mt-1 text-xs text-text-muted">
                       {mc.provider_type} &middot; {mc.model_name} &middot; {mc.base_url}

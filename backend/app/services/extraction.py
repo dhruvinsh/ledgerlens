@@ -29,6 +29,7 @@ async def run_extraction(
     model_api_key: str | None = None,
     model_timeout: int | None = None,
     model_max_retries: int | None = None,
+    supports_vision: bool = False,
 ) -> None:
     """Full extraction pipeline: OCR → LLM/heuristic → normalize → persist.
 
@@ -51,11 +52,6 @@ async def run_extraction(
     receipt.raw_ocr_text = raw_text
     receipt.ocr_confidence = confidence
 
-    if not raw_text.strip():
-        logger.warning("OCR produced no text for receipt %s", receipt.id)
-        receipt.status = "failed"
-        return
-
     # ── Gather known entities for LLM context ──
     store_repo = StoreRepository(db)
     item_repo = CanonicalItemRepository(db)
@@ -66,9 +62,7 @@ async def run_extraction(
     all_items = await item_repo.list_all()
     known_products = [item.name for item in all_items]
 
-    # ── LLM extraction ──
-    data = llm_svc.extract_receipt_data(
-        raw_text,
+    llm_kwargs = dict(
         base_url=model_base_url,
         model_name=model_name,
         api_key=model_api_key,
@@ -78,23 +72,47 @@ async def run_extraction(
         known_products=known_products,
     )
 
-    # Fall back to heuristic if LLM returned nothing usable
+    data: dict = {}
+
+    # ── Tier 1: Vision LLM (if model supports it) ──
+    if supports_vision:
+        data = llm_svc.extract_receipt_data_vision(file_path, **llm_kwargs)
+        if data and data.get("total_cents"):
+            logger.info("Vision LLM extraction successful for receipt %s", receipt.id)
+            receipt.extraction_source = "vision"
+            # Overwrite Tesseract output with the text the vision model actually read
+            if data.get("raw_text"):
+                receipt.raw_ocr_text = data.pop("raw_text")
+
+    # ── Tier 2: Text LLM (using OCR output) ──
     if not data or not data.get("total_cents"):
-        if not data:
-            logger.warning(
-                "LLM returned no data for receipt %s — falling back to heuristic",
-                receipt.id,
-            )
-        else:
-            logger.warning(
-                "LLM returned data without total_cents for receipt %s — falling back to heuristic",
-                receipt.id,
-            )
-        data = heuristic_svc.extract_receipt_data(raw_text)
-        receipt.extraction_source = "heuristic"
-    else:
-        logger.info("LLM extraction successful for receipt %s", receipt.id)
-        receipt.extraction_source = "llm"
+        if raw_text.strip():
+            data = llm_svc.extract_receipt_data(raw_text, **llm_kwargs)
+            if data and data.get("total_cents"):
+                logger.info("Text LLM extraction successful for receipt %s", receipt.id)
+                receipt.extraction_source = "llm"
+            else:
+                logger.warning(
+                    "Text LLM returned no usable data for receipt %s — falling back to heuristic",
+                    receipt.id,
+                )
+
+    # ── Tier 3: Heuristic fallback ──
+    if not data or not data.get("total_cents"):
+        if raw_text.strip():
+            data = heuristic_svc.extract_receipt_data(raw_text)
+            receipt.extraction_source = "heuristic"
+
+    # ── All tiers failed ──
+    if not data or not data.get("total_cents"):
+        reason = (
+            "vision failed and OCR produced no text"
+            if supports_vision and not raw_text.strip()
+            else "all extraction tiers returned no usable data"
+        )
+        logger.warning("Extraction failed for receipt %s: %s", receipt.id, reason)
+        receipt.status = "failed"
+        return
 
     # ── Normalize & match store ──
     store_name = data.get("store_name")

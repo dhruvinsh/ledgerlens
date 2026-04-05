@@ -8,6 +8,7 @@ class ModelConfigCreate(BaseModel):
     model_name: str
     api_key: str | None = None
     is_active: bool = False
+    supports_vision: bool = False
     timeout_seconds: int = 30
     max_retries: int = 1
 
@@ -19,6 +20,7 @@ class ModelConfigUpdate(BaseModel):
     model_name: str | None = None
     api_key: str | None = None
     is_active: bool | None = None
+    supports_vision: bool | None = None
     timeout_seconds: int | None = None
     max_retries: int | None = None
 
@@ -30,6 +32,7 @@ class ModelConfigResponse(BaseModel):
     base_url: str
     model_name: str
     is_active: bool
+    supports_vision: bool
     timeout_seconds: int
     max_retries: int
     health_status: str | None

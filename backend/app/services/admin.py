@@ -36,6 +36,7 @@ class AdminService:
             model_name=data.model_name,
             api_key_encrypted=data.api_key,  # TODO: encrypt in production
             is_active=data.is_active,
+            supports_vision=data.supports_vision,
             timeout_seconds=data.timeout_seconds,
             max_retries=data.max_retries,
         )
@@ -65,6 +66,8 @@ class AdminService:
             mc.timeout_seconds = data.timeout_seconds
         if data.max_retries is not None:
             mc.max_retries = data.max_retries
+        if data.supports_vision is not None:
+            mc.supports_vision = data.supports_vision
 
         await self.repo.update(mc)
         await self.db.commit()

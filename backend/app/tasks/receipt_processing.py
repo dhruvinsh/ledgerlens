@@ -117,6 +117,7 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
                         "model_api_key": mc.api_key_encrypted,
                         "model_timeout": mc.timeout_seconds,
                         "model_max_retries": mc.max_retries,
+                        "supports_vision": mc.supports_vision,
                     }
 
             # OCR stage
@@ -140,7 +141,7 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
                 and model_kwargs  # A model config was set but LLM still failed
             ):
                 job.error_message = (
-                    "LLM extraction failed — used heuristic fallback. "
+                    "LLM/vision extraction failed — used heuristic fallback. "
                     "Check that the configured model is running and accessible."
                 )
 

@@ -147,24 +147,53 @@ export default function ReceiptDetail() {
           </Button>
         </div>
 
-        {/* OCR info */}
-        {receipt.raw_ocr_text && (
+        {/* Extraction input */}
+        {receipt.source !== "manual" && (receipt.raw_ocr_text || receipt.extraction_source === "vision") && (
           <Card className="mt-6">
-            <CardHeader>
-              <h2 className="text-sm font-medium text-text-muted">
-                Raw OCR Text
-                {receipt.ocr_confidence != null && (
-                  <span className="ml-2 font-mono text-xs">
-                    ({(receipt.ocr_confidence * 100).toFixed(0)}% confidence)
-                  </span>
-                )}
-              </h2>
-            </CardHeader>
-            <CardContent>
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs text-text-muted">
-                {receipt.raw_ocr_text}
-              </pre>
-            </CardContent>
+            {receipt.extraction_source === "vision" ? (
+              <>
+                <CardHeader>
+                  <h2 className="text-sm font-medium text-text-muted">
+                    Extraction Input
+                    <span className="ml-2 text-xs text-text-muted">&middot; vision</span>
+                  </h2>
+                </CardHeader>
+                <CardContent>
+                  {receipt.raw_ocr_text ? (
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs text-text-muted">
+                      {receipt.raw_ocr_text}
+                    </pre>
+                  ) : (
+                    <p className="text-xs text-text-muted italic">
+                      Receipt image sent directly to the vision model — text not returned.
+                    </p>
+                  )}
+                </CardContent>
+              </>
+            ) : (
+              <>
+                <CardHeader>
+                  <h2 className="text-sm font-medium text-text-muted">
+                    Extraction Input
+                    {receipt.ocr_confidence != null && (
+                      <span className="ml-2 font-mono text-xs">
+                        ({(receipt.ocr_confidence * 100).toFixed(0)}% OCR confidence)
+                      </span>
+                    )}
+                    {receipt.extraction_source && (
+                      <span className="ml-2 text-xs text-text-muted">
+                        &middot; {receipt.extraction_source === "llm" ? "LLM" : "heuristic"}
+                      </span>
+                    )}
+                  </h2>
+                </CardHeader>
+                <CardContent>
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs text-text-muted">
+                    {receipt.raw_ocr_text}
+                  </pre>
+                </CardContent>
+              </>
+            )}
           </Card>
         )}
       </motion.div>

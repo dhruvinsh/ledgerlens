@@ -18,6 +18,7 @@ def _to_response(mc) -> ModelConfigResponse:  # type: ignore[no-untyped-def]
         base_url=mc.base_url,
         model_name=mc.model_name,
         is_active=mc.is_active,
+        supports_vision=mc.supports_vision,
         timeout_seconds=mc.timeout_seconds,
         max_retries=mc.max_retries,
         health_status=mc.health_status,

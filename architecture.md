@@ -45,7 +45,7 @@ provides spending dashboards — all shareable within a household.
 
 ### Key Features
 
-- **Receipt OCR + LLM extraction** — Tesseract OCR with OpenAI-compatible LLM, heuristic fallback
+- **Receipt OCR + LLM extraction** — Tesseract OCR with OpenAI-compatible LLM (text or vision), heuristic fallback
 - **Smart product matching** — RapidFuzz fuzzy matching with configurable auto-link and suggestion thresholds
 - **Price tracking** — Historical price data per canonical product, filterable by store and date range
 - **Household sharing** — Multi-user households with invite tokens and shared receipt visibility
@@ -88,14 +88,17 @@ ledgerlens2/
 │   │   ├── schemas/                   # Pydantic request/response models
 │   │   ├── repositories/             # Data access layer (one per model)
 │   │   ├── prompts/                  # Jinja2 LLM prompt templates
-│   │   │   ├── system.md.j2          # System prompt (extraction instructions)
-│   │   │   └── user.md.j2            # User message (OCR text + known entities)
+│   │   │   ├── system.md.j2          # System prompt — text path (OCR-aware)
+│   │   │   ├── user.md.j2            # User message — text path (OCR text + known entities)
+│   │   │   ├── system_vision.md.j2   # System prompt — vision path (image-aware)
+│   │   │   └── user_vision.md.j2     # User message — vision path (instruction + known entities)
 │   │   ├── services/                 # Business logic layer
 │   │   │   ├── auth.py               # login, register, session lifecycle
 │   │   │   ├── receipt.py            # upload, manual create, update, delete, list
-│   │   │   ├── extraction.py         # orchestrate OCR → LLM/heuristic → persist
+│   │   │   ├── extraction.py         # orchestrate OCR → vision/text LLM/heuristic → persist
 │   │   │   ├── ocr.py                # Tesseract wrapper + PDF handler
-│   │   │   ├── llm.py                # OpenAI-compatible chat extraction (renders Jinja2 templates)
+│   │   │   ├── llm.py                # OpenAI-compatible chat extraction (text + vision paths)
+│   │   │   ├── image_utils.py        # Base64 image encoding for vision LLM (resize, PDF pages)
 │   │   │   ├── heuristic.py          # Regex-based receipt parser
 │   │   │   ├── normalization.py      # Store name / item name normalisation
 │   │   │   ├── matching.py           # Fuzzy match engine (rapidfuzz)
@@ -257,7 +260,7 @@ class BaseMixin:
 | `StoreAlias` | `store_aliases` | OCR name variations mapped to canonical stores (indexed) | → Store |
 | `StoreMergeSuggestion` | `store_merge_suggestions` | Fuzzy-match duplicate store pairs for admin review | → Store (a), → Store (b) |
 | `ProcessingJob` | `processing_jobs` | Tracks async OCR/LLM pipeline runs (no `updated_at`) | → Receipt, → ModelConfig? |
-| `ModelConfig` | `model_configs` | Admin-managed LLM endpoint configuration | — |
+| `ModelConfig` | `model_configs` | Admin-managed LLM endpoint configuration (includes vision flag) | — |
 
 ### Money Representation
 
@@ -273,13 +276,13 @@ ISO code (default `CAD`).
 |---|---|---|
 | `status` | `String(20)` | `pending`, `processing`, `completed`, `failed` |
 | `source` | `String(20)` | `camera`, `upload`, `manual` |
-| `extraction_source` | `String(20)` | `llm`, `heuristic` |
+| `extraction_source` | `String(20)` | `llm`, `vision`, `heuristic` |
 | `subtotal`, `tax`, `total` | `Integer` | Cents, nullable |
 | `discount` | `Integer` | Total discount in cents, nullable |
 | `payment_method` | `String(20)` | `cash`, `credit`, `debit`, `other`, nullable |
 | `is_refund` | `Boolean` | Whether entire receipt is a return/refund |
 | `ocr_confidence` | `Float` | 0.0–1.0, nullable |
-| `raw_ocr_text` | `Text` | Full OCR output stored for debugging |
+| `raw_ocr_text` | `Text` | Text used for extraction: Tesseract output (text/heuristic path) or vision-model-read text (vision path, overwrites Tesseract output on success) |
 | `duplicate_of` | FK → self | Duplicate detection reference |
 
 #### `canonical_items`
@@ -657,15 +660,18 @@ All endpoints under `/api/v1`. Auth via `session_id` cookie (httpOnly, sameSite=
 ### Task: `process_receipt_task(job_id)`
 
 1. Set job `status=processing`, `stage=ocr`
-2. Run Tesseract OCR (image or multi-page PDF)
+2. Run Tesseract OCR (image or multi-page PDF) — always runs, initially populates `raw_ocr_text`
 3. Store `raw_ocr_text` and `ocr_confidence` on receipt
-4. Set `stage=extraction`, call LLM extraction
-5. If LLM fails or returns no usable total → fall back to heuristic
-6. Normalise store name, resolve via StoreMatchingService (exact → alias → fuzzy → create), seed alias from raw OCR name
-7. For each line item: fuzzy match → auto-link / suggest / create new CanonicalItem
-8. Set receipt `status=completed`, job `status=completed`
-9. Publish status to Redis pub/sub → WebSocket push
-10. On error: set `status=failed` with error message
+4. Set `stage=extraction`, run 3-tier extraction cascade:
+   - **Tier 1 (Vision)**: if `ModelConfig.supports_vision`, send receipt image(s) directly to vision LLM → `extraction_source="vision"`. If the model returns `raw_text`, it overwrites `raw_ocr_text` with the vision-read text (what actually drove the result)
+   - **Tier 2 (Text LLM)**: if vision skipped or failed and OCR has text, send OCR text to LLM → `extraction_source="llm"`
+   - **Tier 3 (Heuristic)**: if text LLM fails or OCR is empty, apply regex extraction → `extraction_source="heuristic"`
+   - If all tiers fail → `status=failed`
+5. Normalise store name, resolve via StoreMatchingService (exact → alias → fuzzy → create), seed alias from raw OCR name
+6. For each line item: fuzzy match → auto-link / suggest / create new CanonicalItem
+7. Set receipt `status=completed`, job `status=completed`
+8. Publish status to Redis pub/sub → WebSocket push
+9. On error: set `status=failed` with error message
 
 ### Batch Uploads
 
@@ -696,25 +702,59 @@ PDF   → PyMuPDF rasterize each page at 300 DPI → OCR per page
       → concatenate text → average confidence
 ```
 
-Both run via `asyncio.to_thread` to avoid blocking the event loop.
+OCR **always runs** regardless of extraction path. Its output is stored in `raw_ocr_text` initially, but if the vision path succeeds and the model returns `raw_text`, that field is overwritten with the vision-read text — so `raw_ocr_text` always reflects the text that actually drove the extraction result. Both image and PDF handlers run via `asyncio.to_thread` to avoid blocking the event loop.
 
-### LLM Service
+### Extraction Cascade
+
+`extraction.py` runs a 3-tier cascade, stopping at the first tier that returns a usable result (i.e. a `total_cents` value):
+
+```
+Tier 1 — Vision LLM   (if ModelConfig.supports_vision)
+          image(s) → vision LLM → JSON          extraction_source = "vision"
+          ↓ (fail / skipped)
+Tier 2 — Text LLM     (if OCR produced text)
+          raw_ocr_text → LLM → JSON             extraction_source = "llm"
+          ↓ (fail / skipped)
+Tier 3 — Heuristic    (if OCR produced text)
+          raw_ocr_text → regex → dict            extraction_source = "heuristic"
+          ↓ (fail)
+          receipt.status = "failed"
+```
+
+### LLM Service (`llm.py`)
 
 Prompts are **Jinja2 templates** stored in `app/prompts/` and rendered at module load time
 (system prompt) or per-request (user prompt). This separates prompt content from Python code,
 making it easy to iterate on extraction instructions without touching service logic.
 
-- **Templates**: `system.md.j2` (static, rendered once), `user.md.j2` (per-request with `raw_text`, `known_stores`, `known_products`)
-- **System prompt** covers:
-  - **OCR awareness**: Instructs the LLM that input is OCR text with garbled characters, and to read the entire receipt before extracting any field
-  - **Store identification**: Cross-reference the full receipt (loyalty cards, URLs, transaction headers, product prefixes, footer text) to resolve the true store name — the header/logo area is the most OCR-error-prone region
-  - **Store fields**: `raw_store_name` (verbatim OCR), `store_name` (cleaned via full-receipt analysis), `store_address`, `store_chain`
-  - **Receipt-level**: `transaction_date`, `currency`, `subtotal_cents`, `tax_cents`, `total_cents`, `discount_total_cents`, `payment_method`, `is_refund_receipt`, `tax_breakdown[]`
-  - **Line items**: `raw_name` (item name portion only — no prices, tax codes, or barcodes), `name` (cleaned, store-context-aware expansions), `quantity`, `unit_price_cents`, `total_price_cents`, `discount_cents`, `is_refund`, `tax_code`, `weight_qty`
-- **Known-entity injection**: Before calling the LLM, the extraction pipeline passes known store names (up to 50) and known product names (up to 100) in the user message, enabling the LLM to match OCR-garbled text against existing entities
-- **JSON mode**: Attempts `response_format={"type": "json_object"}` first; retries without if unsupported
-- **Client**: OpenAI SDK pointed at configurable base_url (Ollama, vLLM, OpenAI, etc.)
-- **Fallback**: Returns `{}` on failure → caller uses heuristic
+Two extraction functions expose text and vision paths — both return the same JSON schema and both return `{}` on failure so the caller's cascade logic is uniform:
+
+- **`extract_receipt_data(raw_text, ...)`** — text path
+  - Templates: `system.md.j2` (OCR-aware instructions, rendered once at import), `user.md.j2` (per-request with `raw_text` + known entities)
+  - User message content: plain string
+
+- **`extract_receipt_data_vision(file_path, ...)`** — vision path
+  - Templates: `system_vision.md.j2` (image-aware instructions, no OCR error warnings), `user_vision.md.j2` (per-request with instruction + known entities, no `raw_text`)
+  - User message content: multipart list `[{"type": "text", ...}, {"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}, ...]`
+  - Image encoding handled by `image_utils.py`: resizes to max 2048px longest side, encodes to base64 data URLs; PDFs rasterized per-page via PyMuPDF at 200 DPI
+
+The vision prompt output schema includes one additional top-level field not present in the text prompt:
+- **`raw_text`**: the full receipt text as read from the image, with `\n` line breaks — stored in `receipt.raw_ocr_text` on success, overwriting Tesseract output
+
+Both prompts otherwise share identical **output schema** covering:
+- **Store fields**: `raw_store_name` (verbatim), `store_name` (cleaned), `store_address`, `store_chain`
+- **Receipt-level**: `transaction_date`, `currency`, `subtotal_cents`, `tax_cents`, `total_cents`, `discount_total_cents`, `payment_method`, `is_refund_receipt`, `tax_breakdown[]`
+- **Line items**: `raw_name`, `name` (expanded/cleaned), `quantity`, `unit_price_cents`, `total_price_cents`, `discount_cents`, `is_refund`, `tax_code`, `weight_qty`
+
+**Shared behaviour (both paths)**:
+- **Known-entity injection**: known store names (up to 50) and product names (up to 100) injected into user prompt so LLM can match garbled text against existing entities
+- **JSON mode**: attempts `response_format={"type": "json_object"}` first; retries without if unsupported
+- **Client**: OpenAI SDK pointed at configurable `base_url` (Ollama, vLLM, OpenAI, etc.)
+- **Returns `{}`** on any failure → caller advances to next tier
+
+### ModelConfig — Vision Flag
+
+`ModelConfig.supports_vision` (Boolean, default `false`) controls whether the vision path is attempted for receipts processed by that model config. Set via the admin UI; the model card shows a "Vision" badge when enabled. Admins should only enable this for models that genuinely support multipart image content (e.g. `llama3.2-vision`, `llava`, `gpt-4o`). If the model doesn't support vision but the flag is set, the API call will fail and tier 2 takes over.
 
 ### Heuristic Service
 

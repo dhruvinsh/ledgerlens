@@ -1,0 +1,13 @@
+Extract all data from the attached receipt image(s).
+{% if known_stores %}
+
+---
+Known stores in the system: [{{ known_stores | join(", ") }}]
+If this receipt matches one of these stores, use that exact store_name.
+{% endif %}
+{% if known_products %}
+
+---
+Known products in the system: [{{ known_products | join(", ") }}]
+If a line item matches a known product, use that exact name.
+{% endif %}

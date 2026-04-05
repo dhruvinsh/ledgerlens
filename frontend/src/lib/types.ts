@@ -57,7 +57,7 @@ export interface Receipt {
   thumbnail_path: string | null;
   page_count: number;
   ocr_confidence: number | null;
-  extraction_source: "llm" | "heuristic" | null;
+  extraction_source: "llm" | "vision" | "heuristic" | null;
   raw_ocr_text: string | null;
   duplicate_of: string | null;
   notes: string | null;
@@ -152,6 +152,7 @@ export interface ModelConfig {
   base_url: string;
   model_name: string;
   is_active: boolean;
+  supports_vision: boolean;
   timeout_seconds: number;
   max_retries: number;
   health_status: string | null;
