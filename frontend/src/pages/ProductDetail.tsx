@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
-import { ArrowLeft, Trash2, GitMerge, TrendingUp, MoreHorizontal, Upload, ImageOff, X, Plus } from "lucide-react";
+import { ArrowLeft, Trash2, GitMerge, TrendingUp, MoreHorizontal, Upload, ImageOff, X, Plus, Receipt } from "lucide-react";
 import { useItem, useUpdateItem, useDeleteItem, useUploadItemImage, useDeleteItemImage, useFetchItemImage, useMergeItem } from "@/hooks/useItems";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,22 +137,24 @@ export default function ProductDetail() {
             >
               <MoreHorizontal size={16} />
             </Button>
-            {showMoreMenu && (
-              <div className="absolute right-0 top-full z-20 mt-1.5 min-w-36 rounded-sm border border-border bg-surface py-1 shadow-lg">
-                <button
-                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-accent/5"
-                  onClick={() => { setShowMoreMenu(false); navigate(`/price-tracker?item=${item.id}`); }}
-                >
-                  <TrendingUp size={14} className="text-text-muted" /> Prices
-                </button>
-                <button
-                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-accent/5"
-                  onClick={() => { setShowMoreMenu(false); setShowMerge(true); }}
-                >
-                  <GitMerge size={14} className="text-text-muted" /> Merge
-                </button>
-              </div>
-            )}
+                {showMoreMenu && (
+                  <div className="absolute right-0 top-full z-20 mt-1.5 min-w-36 rounded-sm border border-border bg-surface py-1 shadow-lg">
+                    {(item.receipt_count ?? 0) > 0 && (
+                      <button
+                        className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-accent/5"
+                        onClick={() => { setShowMoreMenu(false); navigate(`/price-tracker?item=${item.id}`); }}
+                      >
+                        <TrendingUp size={14} className="text-text-muted" /> Prices
+                      </button>
+                    )}
+                    <button
+                      className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-accent/5"
+                      onClick={() => { setShowMoreMenu(false); setShowMerge(true); }}
+                    >
+                      <GitMerge size={14} className="text-text-muted" /> Merge
+                    </button>
+                  </div>
+                )}
           </div>
           <Button variant="destructive" size="sm" className="shrink-0" onClick={() => setShowDelete(true)}>
             <Trash2 size={14} /> Delete
@@ -174,6 +176,14 @@ export default function ProductDetail() {
                   <ImageOff size={40} className="text-text-muted" />
                 </div>
               )}
+
+              <div className="flex items-center gap-2 text-sm text-text-muted">
+                <Receipt size={14} className="shrink-0" />
+                <span>
+                  {item.receipt_count ?? 0} receipt{(item.receipt_count ?? 0) !== 1 ? "s" : ""}
+                </span>
+              </div>
+
               <div className="flex gap-2">
                 <label className="cursor-pointer">
                   <span className="inline-flex h-8 items-center gap-2 rounded-sm border border-border px-3 text-xs font-medium hover:bg-accent/5">

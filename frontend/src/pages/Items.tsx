@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { Search, Package } from "lucide-react";
+import { Search, Package, Receipt } from "lucide-react";
 import { useItems } from "@/hooks/useItems";
 import { Card, CardContent } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
@@ -42,25 +42,36 @@ export default function Items() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.02, duration: 0.2 }}
               >
-                <Link to={`/items/${item.id}`}>
+                <Link to={`/items/${item.id}`} className="block">
                   <Card className="transition-shadow hover:shadow-md">
-                    <CardContent className="flex items-center gap-3 py-4">
-                      {item.image_path ? (
-                        <img
-                          src={`/files/${item.image_path}`}
-                          alt={item.name}
-                          className="h-10 w-10 rounded-sm object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-accent/10">
-                          <Package size={18} className="text-accent" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{item.name}</p>
+                    <CardContent className="flex h-[116px] flex-col py-4">
+                      {/* Top: image + name */}
+                      <div className="flex items-start gap-3">
+                        {item.image_path ? (
+                          <img
+                            src={`/files/${item.image_path}`}
+                            alt={item.name}
+                            className="h-10 w-10 shrink-0 rounded-sm object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-accent/10">
+                            <Package size={18} className="text-accent" />
+                          </div>
+                        )}
+                        <span className="truncate font-medium">{item.name}</span>
+                      </div>
+
+                      {/* Middle: category — fills remaining space */}
+                      <div className="mt-1.5 min-h-0 flex-1">
                         <p className="text-xs text-text-muted">
                           {item.category ?? "Uncategorized"}
                         </p>
+                      </div>
+
+                      {/* Bottom: receipt count — pinned to bottom */}
+                      <div className="mt-1.5 flex items-center gap-1 text-xs text-text-muted">
+                        <Receipt size={11} />
+                        {item.receipt_count ?? 0}
                       </div>
                     </CardContent>
                   </Card>

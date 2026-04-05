@@ -11,6 +11,7 @@ class CanonicalItemResponse(BaseModel):
     image_source: str | None
     image_fetch_status: str | None
     created_at: str
+    receipt_count: int = 0
 
     model_config = {"from_attributes": True}
 

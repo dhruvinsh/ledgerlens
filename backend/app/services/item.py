@@ -1,4 +1,4 @@
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -18,6 +18,12 @@ class ItemService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = CanonicalItemRepository(db)
+
+    async def get_receipt_count(self, item_id: str) -> int:
+        result = await self.db.execute(
+            select(func.count()).where(LineItem.canonical_item_id == item_id)
+        )
+        return result.scalar() or 0
 
     async def get_by_id(self, item_id: str) -> CanonicalItem:
         item = await self.repo.get_by_id(item_id)
@@ -76,9 +82,7 @@ class ItemService:
         await self.db.delete(item)
         await self.db.commit()
 
-    async def merge_items(
-        self, canonical_id: str, duplicate_ids: list[str]
-    ) -> CanonicalItem:
+    async def merge_items(self, canonical_id: str, duplicate_ids: list[str]) -> CanonicalItem:
         canonical = await self.get_by_id(canonical_id)
 
         for dup_id in duplicate_ids:
@@ -115,9 +119,7 @@ class ItemService:
 
             # Delete all match suggestions referencing the duplicate
             await self.db.execute(
-                delete(MatchSuggestion).where(
-                    MatchSuggestion.canonical_item_id == dup_id
-                )
+                delete(MatchSuggestion).where(MatchSuggestion.canonical_item_id == dup_id)
             )
 
             # Hard-delete the duplicate (image cleanup only if we didn't adopt it)
@@ -128,9 +130,7 @@ class ItemService:
         await self.db.flush()
         return canonical
 
-    async def upload_image(
-        self, item_id: str, file_content: bytes, filename: str
-    ) -> CanonicalItem:
+    async def upload_image(self, item_id: str, file_content: bytes, filename: str) -> CanonicalItem:
         item = await self.get_by_id(item_id)
         relative_path = await storage.save_product_image(file_content, filename, item_id)
         item.image_path = relative_path

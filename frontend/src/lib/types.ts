@@ -106,6 +106,7 @@ export interface CanonicalItem {
   image_source: "user" | "auto" | null;
   image_fetch_status: string | null;
   created_at: string;
+  receipt_count?: number;
 }
 
 export interface MatchSuggestion {

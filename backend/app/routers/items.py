@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
+from app.models.canonical_item import CanonicalItem
+from app.models.line_item import LineItem
 from app.models.user import User
 from app.schemas.item import (
     CanonicalItemResponse,
@@ -16,7 +19,7 @@ from app.services.item import ItemService
 router = APIRouter(prefix="/items", tags=["items"])
 
 
-def _to_response(item) -> CanonicalItemResponse:  # type: ignore[no-untyped-def]
+def _to_response(item: CanonicalItem, receipt_count: int = 0) -> CanonicalItemResponse:
     return CanonicalItemResponse(
         id=item.id,
         name=item.name,
@@ -27,6 +30,7 @@ def _to_response(item) -> CanonicalItemResponse:  # type: ignore[no-untyped-def]
         image_source=item.image_source,
         image_fetch_status=item.image_fetch_status,
         created_at=item.created_at.isoformat(),
+        receipt_count=receipt_count,
     )
 
 
@@ -40,8 +44,19 @@ async def list_items(
 ) -> PaginatedResponse[CanonicalItemResponse]:
     svc = ItemService(db)
     items, total = await svc.list_items(search=search, page=page, per_page=per_page)
+
+    counts: dict[str, int] = {}
+    if items:
+        item_ids = [i.id for i in items]
+        result = await db.execute(
+            select(LineItem.canonical_item_id, func.count())
+            .where(LineItem.canonical_item_id.in_(item_ids))
+            .group_by(LineItem.canonical_item_id)
+        )
+        counts = {str(row[0]): row[1] for row in result.all()}
+
     return PaginatedResponse(
-        items=[_to_response(i) for i in items],
+        items=[_to_response(i, counts.get(i.id, 0)) for i in items],
         total=total,
         page=page,
         per_page=per_page,
@@ -56,7 +71,8 @@ async def get_item(
 ) -> CanonicalItemResponse:
     svc = ItemService(db)
     item = await svc.get_by_id(item_id)
-    return _to_response(item)
+    receipt_count = await svc.get_receipt_count(item_id)
+    return _to_response(item, receipt_count)
 
 
 @router.get("/{item_id}/prices", response_model=PriceHistoryResponse)
