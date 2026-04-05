@@ -3,9 +3,8 @@ import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
 
-from app.worker import celery_app
-
 from app.services.notifications import publish_job_update
+from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +27,7 @@ def _get_session_factory():  # type: ignore[no-untyped-def]
             echo=False,
             poolclass=NullPool,
         )
-        _session_factory = async_sessionmaker(
-            _engine, class_=AsyncSession, expire_on_commit=False
-        )
+        _session_factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
         if "sqlite" in settings.DATABASE_URL:
 
@@ -47,10 +44,16 @@ def _get_session_factory():  # type: ignore[no-untyped-def]
 
 
 def _notify(
-    user_id: str, job_id: str, status: str, receipt_id: str,
-    stage: str | None = None, error_message: str | None = None,
+    user_id: str,
+    job_id: str,
+    status: str,
+    receipt_id: str,
+    stage: str | None = None,
+    error_message: str | None = None,
 ) -> None:
-    publish_job_update(user_id, job_id, status, receipt_id, stage=stage, error_message=error_message)
+    publish_job_update(
+        user_id, job_id, status, receipt_id, stage=stage, error_message=error_message
+    )
 
 
 @celery_app.task(bind=True, name="process_receipt")
@@ -69,20 +72,15 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
     async with session_factory() as db:
         # Load job
         from sqlalchemy import select
-        from sqlalchemy.orm import joinedload
 
-        result = await db.execute(
-            select(ProcessingJob).where(ProcessingJob.id == job_id)
-        )
+        result = await db.execute(select(ProcessingJob).where(ProcessingJob.id == job_id))
         job = result.scalar_one_or_none()
         if not job:
             logger.error("ProcessingJob %s not found", job_id)
             return {"status": "error", "message": "Job not found"}
 
         # Load receipt
-        result = await db.execute(
-            select(Receipt).where(Receipt.id == job.receipt_id)
-        )
+        result = await db.execute(select(Receipt).where(Receipt.id == job.receipt_id))
         receipt = result.scalar_one_or_none()
         if not receipt:
             logger.error("Receipt %s not found for job %s", job.receipt_id, job_id)
@@ -104,6 +102,7 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
             # Resolve model config if set
             model_kwargs: dict = {}
             if job.model_config_id:
+                from app.core.encryption import decrypt_api_key
                 from app.models.model_config import ModelConfig
 
                 mc_result = await db.execute(
@@ -114,7 +113,9 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
                     model_kwargs = {
                         "model_base_url": mc.base_url,
                         "model_name": mc.model_name,
-                        "model_api_key": mc.api_key_encrypted,
+                        "model_api_key": decrypt_api_key(mc.api_key_encrypted)
+                        if mc.api_key_encrypted
+                        else None,
                         "model_timeout": mc.timeout_seconds,
                         "model_max_retries": mc.max_retries,
                         "supports_vision": mc.supports_vision,
@@ -148,13 +149,15 @@ async def _process(task, job_id: str) -> dict:  # type: ignore[no-untyped-def]
             await db.commit()
 
             _notify(
-                receipt.user_id, job.id, "completed", receipt.id,
-                stage="done", error_message=job.error_message,
+                receipt.user_id,
+                job.id,
+                "completed",
+                receipt.id,
+                stage="done",
+                error_message=job.error_message,
             )
 
-            logger.info(
-                "Receipt %s processed (source=%s)", receipt.id, receipt.extraction_source
-            )
+            logger.info("Receipt %s processed (source=%s)", receipt.id, receipt.extraction_source)
             return {"status": "completed", "receipt_id": receipt.id}
 
         except SoftTimeLimitExceeded:

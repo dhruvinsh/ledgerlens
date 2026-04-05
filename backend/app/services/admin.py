@@ -3,6 +3,7 @@ import logging
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.encryption import decrypt_api_key, encrypt_api_key
 from app.core.exceptions import NotFoundError
 from app.core.time import utc_now
 from app.models.model_config import ModelConfig
@@ -34,7 +35,7 @@ class AdminService:
             provider_type=data.provider_type,
             base_url=data.base_url,
             model_name=data.model_name,
-            api_key_encrypted=data.api_key,  # TODO: encrypt in production
+            api_key_encrypted=encrypt_api_key(data.api_key) if data.api_key else None,
             is_active=data.is_active,
             supports_vision=data.supports_vision,
             timeout_seconds=data.timeout_seconds,
@@ -56,7 +57,7 @@ class AdminService:
         if data.model_name is not None:
             mc.model_name = data.model_name
         if data.api_key is not None:
-            mc.api_key_encrypted = data.api_key
+            mc.api_key_encrypted = encrypt_api_key(data.api_key)
         if data.is_active is not None:
             if data.is_active:
                 await self.repo.deactivate_all()
@@ -84,7 +85,7 @@ class AdminService:
         try:
             headers = {}
             if mc.api_key_encrypted:
-                headers["Authorization"] = f"Bearer {mc.api_key_encrypted}"
+                headers["Authorization"] = f"Bearer {decrypt_api_key(mc.api_key_encrypted)}"
             async with httpx.AsyncClient(timeout=mc.timeout_seconds) as client:
                 resp = await client.get(f"{mc.base_url}/models", headers=headers)
                 resp.raise_for_status()
