@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
+from app.models.receipt import Receipt
 from app.models.user import User
 from app.schemas.pagination import PaginatedResponse
 from app.schemas.store import (
@@ -68,20 +70,29 @@ async def list_merge_suggestions(
 ) -> PaginatedResponse[StoreMergeSuggestionResponse]:
     svc = StoreService(db)
     suggestions, total = await svc.suggestion_repo.list_pending(page, per_page)
-    items = []
-    for s in suggestions:
-        count_a = await svc.get_receipt_count(s.store_a.id)
-        count_b = await svc.get_receipt_count(s.store_b.id)
-        items.append(
-            StoreMergeSuggestionResponse(
-                id=s.id,
-                store_a=_to_response(s.store_a, count_a),
-                store_b=_to_response(s.store_b, count_b),
-                confidence=s.confidence,
-                status=s.status,
-                created_at=s.created_at.isoformat(),
-            )
+
+    store_ids = list({s.store_a.id for s in suggestions} | {s.store_b.id for s in suggestions})
+    if store_ids:
+        rc = (
+            select(Receipt.store_id, func.count().label("cnt"))
+            .where(Receipt.store_id.in_(store_ids))
+            .group_by(Receipt.store_id)
         )
+        counts = {row[0]: row[1] for row in (await db.execute(rc))}
+    else:
+        counts = {}
+
+    items = [
+        StoreMergeSuggestionResponse(
+            id=s.id,
+            store_a=_to_response(s.store_a, counts.get(s.store_a.id, 0)),
+            store_b=_to_response(s.store_b, counts.get(s.store_b.id, 0)),
+            confidence=s.confidence,
+            status=s.status,
+            created_at=s.created_at.isoformat(),
+        )
+        for s in suggestions
+    ]
     return PaginatedResponse(items=items, total=total, page=page, per_page=per_page)
 
 
