@@ -30,9 +30,7 @@ class StoreService:
 
     async def get_by_id_with_aliases(self, store_id: str) -> Store:
         result = await self.db.execute(
-            select(Store)
-            .options(selectinload(Store.aliases))
-            .where(Store.id == store_id)
+            select(Store).options(selectinload(Store.aliases)).where(Store.id == store_id)
         )
         store = result.scalar_one_or_none()
         if not store:
@@ -40,10 +38,27 @@ class StoreService:
         return store
 
     async def get_receipt_count(self, store_id: str) -> int:
-        result = await self.db.execute(
-            select(func.count()).where(Receipt.store_id == store_id)
-        )
+        result = await self.db.execute(select(func.count()).where(Receipt.store_id == store_id))
         return result.scalar() or 0
+
+    async def get_receipts(
+        self, store_id: str, page: int = 1, per_page: int = 10
+    ) -> tuple[list[Receipt], int]:
+        base = (
+            select(Receipt)
+            .where(Receipt.store_id == store_id)
+            .options(selectinload(Receipt.store))
+            .order_by(Receipt.transaction_date.desc())
+        )
+
+        count_query = select(func.count()).select_from(base.subquery())
+        total = (await self.db.execute(count_query)).scalar() or 0
+
+        query = base.offset((page - 1) * per_page).limit(per_page)
+        result = await self.db.execute(query)
+        items = list(result.unique().scalars().all())
+
+        return items, total
 
     async def list_stores(
         self,
@@ -70,8 +85,7 @@ class StoreService:
             .subquery()
         )
         query = (
-            base
-            .options(selectinload(Store.aliases))
+            base.options(selectinload(Store.aliases))
             .outerjoin(receipt_count, Store.id == receipt_count.c.store_id)
             .add_columns(func.coalesce(receipt_count.c.cnt, 0).label("receipt_count"))
             .order_by(Store.name)
@@ -129,9 +143,7 @@ class StoreService:
 
             # Reassign receipts
             await self.db.execute(
-                update(Receipt)
-                .where(Receipt.store_id == dup_id)
-                .values(store_id=canonical_id)
+                update(Receipt).where(Receipt.store_id == dup_id).values(store_id=canonical_id)
             )
 
             # Move aliases from duplicate to canonical (skip if canonical already has it)

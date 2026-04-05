@@ -96,6 +96,20 @@ export interface LineItem {
   is_corrected: boolean;
 }
 
+export interface ReceiptListItem {
+  id: string;
+  user_id: string;
+  store: { id: string; name: string; chain: string | null } | null;
+  transaction_date: string | null;
+  currency: string;
+  total: number | null;
+  source: string;
+  status: string;
+  thumbnail_path: string | null;
+  page_count: number;
+  created_at: string;
+}
+
 export interface CanonicalItem {
   id: string;
   name: string;

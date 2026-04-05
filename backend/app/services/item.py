@@ -1,6 +1,6 @@
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.core.exceptions import ItemNotFoundError, ValidationError
 from app.models.canonical_item import CanonicalItem
@@ -150,6 +150,30 @@ class ItemService:
         await self.repo.update(item)
         await self.db.commit()
         return item
+
+    async def get_receipts(
+        self, item_id: str, page: int = 1, per_page: int = 10
+    ) -> tuple[list[Receipt], int]:
+        base = (
+            select(Receipt)
+            .join(LineItem, LineItem.receipt_id == Receipt.id)
+            .options(selectinload(Receipt.store))
+            .where(
+                LineItem.canonical_item_id == item_id,
+                Receipt.status.in_(["processed", "reviewed"]),
+            )
+            .distinct()
+            .order_by(Receipt.transaction_date.desc())
+        )
+
+        count_query = select(func.count()).select_from(base.subquery())
+        total = (await self.db.execute(count_query)).scalar() or 0
+
+        query = base.offset((page - 1) * per_page).limit(per_page)
+        result = await self.db.execute(query)
+        items = list(result.unique().scalars().all())
+
+        return items, total
 
     async def get_price_history(
         self,

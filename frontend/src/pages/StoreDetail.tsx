@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
 import {
@@ -11,9 +11,11 @@ import {
   ShieldCheck,
   ShieldOff,
   Receipt,
+  ChevronRight,
 } from "lucide-react";
 import {
   useStore,
+  useStoreReceipts,
   useUpdateStore,
   useDeleteStore,
   useMergeStore,
@@ -30,7 +32,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MergeDialog } from "@/components/ui/merge-dialog";
 import { useToastStore } from "@/stores/toastStore";
 import { api } from "@/services/api";
-import type { PaginatedResponse, Store } from "@/lib/types";
+import type { PaginatedResponse, ReceiptListItem, Store } from "@/lib/types";
 
 export default function StoreDetail() {
   const { id } = useParams();
@@ -52,6 +54,36 @@ export default function StoreDetail() {
   const [showDelete, setShowDelete] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [showMerge, setShowMerge] = useState(false);
+  const [receiptPageMap, setReceiptPageMap] = useState<Record<number, ReceiptListItem[]>>({});
+  const [receiptPage, setReceiptPage] = useState(1);
+  const [expanded, setExpanded] = useState(false);
+
+  const { data: receiptData } = useStoreReceipts(id, receiptPage, 10);
+
+  useEffect(() => {
+    if (receiptData?.items) {
+      setReceiptPageMap((prev) => ({ ...prev, [receiptPage]: receiptData.items }));
+    }
+  }, [receiptData, receiptPage]);
+
+  useEffect(() => {
+    setReceiptPageMap({});
+    setReceiptPage(1);
+    setExpanded(false);
+  }, [id]);
+
+  const allReceipts = useMemo(() => {
+    const pages = Object.keys(receiptPageMap)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .flatMap((k) => receiptPageMap[k]);
+    if (receiptData?.items && receiptPage === 1) {
+      return receiptData.items;
+    }
+    return pages;
+  }, [receiptPageMap, receiptData, receiptPage]);
+
+  const hasMore = receiptData ? allReceipts.length < receiptData.total : false;
 
   // Sync form state when store loads
   if (store && !dirty) {
@@ -282,6 +314,82 @@ export default function StoreDetail() {
           </Card>
         </div>
       </motion.div>
+
+      {/* Receipts list */}
+      {store.receipt_count > 0 && (
+        <Card className="mt-6">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium">Receipts</h2>
+              <span className="text-xs text-text-muted">{store.receipt_count}</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div
+              className={`transition-[max-height] duration-300 overflow-hidden ${
+                expanded ? "max-h-[2000px]" : "max-h-[160px]"
+              }`}
+            >
+              {allReceipts.length === 0 && receiptData?.items === undefined ? (
+                <div className="flex items-center justify-center py-6">
+                  <Spinner className="text-text-muted" />
+                </div>
+              ) : allReceipts.length === 0 ? (
+                <p className="py-4 text-center text-sm text-text-muted">No receipts found.</p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {allReceipts.map((r) => (
+                    <button
+                      key={r.id}
+                      className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-accent/5 rounded-sm px-2 -mx-2 transition-colors"
+                      onClick={() => navigate(`/receipts/${r.id}`)}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {r.store?.name ?? "Unknown"}
+                        </p>
+                        <p className="text-xs text-text-muted">
+                          {r.transaction_date
+                            ? new Date(r.transaction_date).toLocaleDateString()
+                            : "No date"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-text-muted">
+                          {r.total != null ? `${(r.total / 100).toFixed(2)} ${r.currency}` : "—"}
+                        </span>
+                        <ChevronRight size={14} className="text-text-muted" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {allReceipts.length > 0 && (
+              <div className="mt-2 flex justify-center">
+                {!expanded && allReceipts.length > 4 ? (
+                  <button
+                    className="text-xs text-accent hover:underline"
+                    onClick={() => setExpanded(true)}
+                  >
+                    Show more
+                  </button>
+                ) : hasMore ? (
+                  <button
+                    className="text-xs text-accent hover:underline"
+                    onClick={() => setReceiptPage((p) => p + 1)}
+                  >
+                    Load more
+                  </button>
+                ) : (
+                  <span className="text-xs text-text-muted">No more receipts</span>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <ConfirmDialog
         open={showDelete}

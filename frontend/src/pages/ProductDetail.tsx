@@ -1,8 +1,8 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
 import { ArrowLeft, Trash2, GitMerge, TrendingUp, MoreHorizontal, Upload, ImageOff, X, Plus, Receipt } from "lucide-react";
-import { useItem, useUpdateItem, useDeleteItem, useUploadItemImage, useDeleteItemImage, useFetchItemImage, useMergeItem } from "@/hooks/useItems";
+import { useItem, useItemReceipts, useUpdateItem, useDeleteItem, useUploadItemImage, useDeleteItemImage, useFetchItemImage, useMergeItem } from "@/hooks/useItems";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MergeDialog } from "@/components/ui/merge-dialog";
 import { useToastStore } from "@/stores/toastStore";
 import { api } from "@/services/api";
-import type { CanonicalItem, PaginatedResponse } from "@/lib/types";
+import type { CanonicalItem, PaginatedResponse, ReceiptListItem } from "@/lib/types";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -34,6 +34,36 @@ export default function ProductDetail() {
   const [showMerge, setShowMerge] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const [receiptPageMap, setReceiptPageMap] = useState<Record<number, ReceiptListItem[]>>({});
+  const [receiptPage, setReceiptPage] = useState(1);
+  const [expanded, setExpanded] = useState(false);
+
+  const { data: receiptData } = useItemReceipts(id, receiptPage, 10);
+
+  useEffect(() => {
+    if (receiptData?.items) {
+      setReceiptPageMap((prev) => ({ ...prev, [receiptPage]: receiptData.items }));
+    }
+  }, [receiptData, receiptPage]);
+
+  useEffect(() => {
+    setReceiptPageMap({});
+    setReceiptPage(1);
+    setExpanded(false);
+  }, [id]);
+
+  const allReceipts = useMemo(() => {
+    const pages = Object.keys(receiptPageMap)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .flatMap((k) => receiptPageMap[k]);
+    if (receiptData?.items && receiptPage === 1) {
+      return receiptData.items;
+    }
+    return pages;
+  }, [receiptPageMap, receiptData, receiptPage]);
+
+  const hasMore = receiptData ? allReceipts.length < receiptData.total : false;
 
   useEffect(() => {
     if (!showMoreMenu) return;
@@ -249,6 +279,79 @@ export default function ProductDetail() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Receipts list */}
+        {(item.receipt_count ?? 0) > 0 && (
+          <Card className="mt-6">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-medium">Receipts</h2>
+                <span className="text-xs text-text-muted">{item.receipt_count ?? 0}</span>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div
+                className={`transition-[max-height] duration-300 overflow-hidden ${
+                  expanded ? "max-h-[2000px]" : "max-h-[160px]"
+                }`}
+              >
+                {allReceipts.length === 0 && receiptData?.items === undefined ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Spinner className="text-text-muted" />
+                  </div>
+                ) : allReceipts.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-text-muted">No receipts found.</p>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {allReceipts.map((r) => (
+                      <button
+                        key={r.id}
+                        className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-accent/5 rounded-sm px-2 -mx-2 transition-colors"
+                        onClick={() => navigate(`/receipts/${r.id}`)}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {r.store?.name ?? "Unknown"}
+                          </p>
+                          <p className="text-xs text-text-muted">
+                            {r.transaction_date
+                              ? new Date(r.transaction_date).toLocaleDateString()
+                              : "No date"}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-xs text-text-muted">
+                          {r.total != null ? `${(r.total / 100).toFixed(2)} ${r.currency}` : "—"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {allReceipts.length > 0 && (
+                <div className="mt-2 flex justify-center">
+                  {!expanded && allReceipts.length > 4 ? (
+                    <button
+                      className="text-xs text-accent hover:underline"
+                      onClick={() => setExpanded(true)}
+                    >
+                      Show more
+                    </button>
+                  ) : hasMore ? (
+                    <button
+                      className="text-xs text-accent hover:underline"
+                      onClick={() => setReceiptPage((p) => p + 1)}
+                    >
+                      Load more
+                    </button>
+                  ) : (
+                    <span className="text-xs text-text-muted">No more receipts</span>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </motion.div>
 
       <ConfirmDialog

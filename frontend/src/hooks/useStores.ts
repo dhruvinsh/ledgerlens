@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
-import type { PaginatedResponse, Store, StoreAlias } from "@/lib/types";
+import type { PaginatedResponse, ReceiptListItem, Store, StoreAlias } from "@/lib/types";
 
 export function useStores(filters: { search?: string; chain?: string; page?: number; per_page?: number } = {}) {
   return useQuery({
@@ -35,6 +35,22 @@ export function useDeleteStore() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/stores/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["stores"] }),
+  });
+}
+
+export function useStoreReceipts(
+  id: string | undefined,
+  page: number = 1,
+  per_page: number = 10,
+) {
+  return useQuery({
+    queryKey: ["stores", id, "receipts", page, per_page],
+    queryFn: () =>
+      api.get<PaginatedResponse<ReceiptListItem>>(`/stores/${id}/receipts`, {
+        page: String(page),
+        per_page: String(per_page),
+      }),
+    enabled: !!id,
   });
 }
 

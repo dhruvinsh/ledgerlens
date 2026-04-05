@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
-import type { CanonicalItem, PaginatedResponse, PricePoint } from "@/lib/types";
+import type { CanonicalItem, PaginatedResponse, PricePoint, ReceiptListItem } from "@/lib/types";
 
 export function useItems(filters: { search?: string; page?: number; per_page?: number } = {}) {
   return useQuery({
@@ -29,6 +29,22 @@ export function useItemPrices(
         `/items/${id}/prices`,
         params as Record<string, string>,
       ),
+    enabled: !!id,
+  });
+}
+
+export function useItemReceipts(
+  id: string | undefined,
+  page: number = 1,
+  per_page: number = 10,
+) {
+  return useQuery({
+    queryKey: ["items", id, "receipts", page, per_page],
+    queryFn: () =>
+      api.get<PaginatedResponse<ReceiptListItem>>(`/items/${id}/receipts`, {
+        page: String(page),
+        per_page: String(per_page),
+      }),
     enabled: !!id,
   });
 }
