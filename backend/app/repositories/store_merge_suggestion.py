@@ -27,23 +27,18 @@ class StoreMergeSuggestionRepository:
     async def list_pending(
         self, page: int = 1, per_page: int = 20
     ) -> tuple[list[StoreMergeSuggestion], int]:
-        base = select(StoreMergeSuggestion).where(StoreMergeSuggestion.status == "pending")
+        from app.core.pagination import paginate
 
-        count_result = await self.db.execute(
-            select(func.count()).select_from(base.subquery())
-        )
-        total = count_result.scalar() or 0
-
-        result = await self.db.execute(
-            base.options(
+        query = (
+            select(StoreMergeSuggestion)
+            .where(StoreMergeSuggestion.status == "pending")
+            .options(
                 joinedload(StoreMergeSuggestion.store_a).selectinload(Store.aliases),
                 joinedload(StoreMergeSuggestion.store_b).selectinload(Store.aliases),
             )
             .order_by(StoreMergeSuggestion.confidence.desc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
         )
-        return list(result.scalars().unique().all()), total
+        return await paginate(self.db, query, page, per_page)
 
     async def exists_for_pair(self, store_a_id: str, store_b_id: str) -> bool:
         """Check if a suggestion already exists for this pair (in either direction)."""

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import StoreNotFoundError, ValidationError
+from app.core.pagination import paginate
 from app.models.receipt import Receipt
 from app.models.store import Store
 from app.models.store_alias import StoreAlias
@@ -51,14 +52,7 @@ class StoreService:
             .order_by(Receipt.transaction_date.desc())
         )
 
-        count_query = select(func.count()).select_from(base.subquery())
-        total = (await self.db.execute(count_query)).scalar() or 0
-
-        query = base.offset((page - 1) * per_page).limit(per_page)
-        result = await self.db.execute(query)
-        items = list(result.unique().scalars().all())
-
-        return items, total
+        return await paginate(self.db, base, page, per_page)
 
     async def list_stores(
         self,

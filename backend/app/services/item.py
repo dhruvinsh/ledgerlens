@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.core.exceptions import ItemNotFoundError, ValidationError
+from app.core.pagination import paginate
 from app.models.canonical_item import CanonicalItem
 from app.models.line_item import LineItem
 from app.models.match_suggestion import MatchSuggestion
@@ -37,21 +38,11 @@ class ItemService:
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[CanonicalItem], int]:
-        from sqlalchemy import func
-
         query = select(CanonicalItem)
         if search:
             query = query.where(CanonicalItem.name.ilike(f"%{search}%"))
-
-        count_query = select(func.count()).select_from(query.subquery())
-        total = (await self.db.execute(count_query)).scalar() or 0
-
         query = query.order_by(CanonicalItem.name)
-        query = query.offset((page - 1) * per_page).limit(per_page)
-        result = await self.db.execute(query)
-        items = list(result.scalars().all())
-
-        return items, total
+        return await paginate(self.db, query, page, per_page)
 
     async def update(self, item_id: str, data: CanonicalItemUpdate) -> CanonicalItem:
         item = await self.get_by_id(item_id)
@@ -166,14 +157,7 @@ class ItemService:
             .order_by(Receipt.transaction_date.desc())
         )
 
-        count_query = select(func.count()).select_from(base.subquery())
-        total = (await self.db.execute(count_query)).scalar() or 0
-
-        query = base.offset((page - 1) * per_page).limit(per_page)
-        result = await self.db.execute(query)
-        items = list(result.unique().scalars().all())
-
-        return items, total
+        return await paginate(self.db, base, page, per_page)
 
     async def get_price_history(
         self,

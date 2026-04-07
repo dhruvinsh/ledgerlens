@@ -15,26 +15,12 @@ from app.schemas.receipt import (
     ReceiptFilters,
     ReceiptListItem,
     ReceiptUpdate,
+    receipt_to_list_item,
 )
 from app.services.receipt import ReceiptService
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
-
-def _to_list_item(r) -> ReceiptListItem:  # type: ignore[no-untyped-def]
-    return ReceiptListItem(
-        id=r.id,
-        user_id=r.user_id,
-        store=r.store,
-        transaction_date=r.transaction_date.isoformat() if r.transaction_date else None,
-        currency=r.currency,
-        total=r.total,
-        source=r.source,
-        status=r.status,
-        thumbnail_path=r.thumbnail_path,
-        page_count=r.page_count,
-        created_at=r.created_at.isoformat(),
-    )
 
 
 def _to_detail(r) -> ReceiptDetail:  # type: ignore[no-untyped-def]
@@ -75,7 +61,7 @@ async def upload_receipt(
     svc = ReceiptService(db, user)
     content = await file.read()
     receipt = await svc.upload(content, file.filename or "upload.jpg", source)
-    return _to_list_item(receipt)
+    return receipt_to_list_item(receipt)
 
 
 MAX_BATCH_FILES = 20
@@ -96,7 +82,7 @@ async def upload_receipt_batch(
     svc = ReceiptService(db, user)
     receipts, errors = await svc.upload_batch(files, source)
     return BatchUploadResponse(
-        receipts=[_to_list_item(r) for r in receipts],
+        receipts=[receipt_to_list_item(r) for r in receipts],
         errors=[BatchUploadError(**e) for e in errors],
     )
 
@@ -140,7 +126,7 @@ async def list_receipts(
     )
     receipts, total = await svc.list_receipts(filters)
     return PaginatedResponse(
-        items=[_to_list_item(r) for r in receipts],
+        items=[receipt_to_list_item(r) for r in receipts],
         total=total,
         page=page,
         per_page=per_page,

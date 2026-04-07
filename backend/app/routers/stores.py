@@ -15,7 +15,7 @@ from app.schemas.store import (
     StoreResponse,
     StoreUpdate,
 )
-from app.schemas.receipt import ReceiptListItem, StoreInfo
+from app.schemas.receipt import ReceiptListItem, receipt_to_list_item
 from app.services.store import StoreService
 
 router = APIRouter(prefix="/stores", tags=["stores"])
@@ -38,22 +38,6 @@ def _to_response(store, receipt_count: int = 0) -> StoreResponse:
     )
 
 
-def _receipt_to_list_item(receipt) -> ReceiptListItem:
-    store = receipt.store
-    return ReceiptListItem(
-        id=receipt.id,
-        user_id=receipt.user_id,
-        store=StoreInfo(id=store.id, name=store.name, chain=store.chain) if store else None,
-        transaction_date=receipt.transaction_date.isoformat() if receipt.transaction_date else None,
-        currency=receipt.currency,
-        total=receipt.total,
-        source=receipt.source,
-        status=receipt.status,
-        thumbnail_path=receipt.thumbnail_path,
-        page_count=receipt.page_count,
-        created_at=receipt.created_at.isoformat(),
-    )
-
 
 @router.get("/{store_id}/receipts", response_model=PaginatedResponse[ReceiptListItem])
 async def get_store_receipts(
@@ -66,7 +50,7 @@ async def get_store_receipts(
     svc = StoreService(db)
     items, total = await svc.get_receipts(store_id, page=page, per_page=per_page)
     return PaginatedResponse(
-        items=[_receipt_to_list_item(r) for r in items],
+        items=[receipt_to_list_item(r) for r in items],
         total=total,
         page=page,
         per_page=per_page,

@@ -80,6 +80,29 @@ class ReceiptListItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def receipt_to_list_item(r: object) -> ReceiptListItem:
+    """Convert a Receipt ORM object to a ReceiptListItem schema.
+
+    Centralised here because routers/receipts.py, routers/items.py, and
+    routers/stores.py all need the same transformation.
+    """
+    store = getattr(r, "store", None)
+    transaction_date = getattr(r, "transaction_date", None)
+    return ReceiptListItem(
+        id=r.id,  # type: ignore[attr-defined]
+        user_id=r.user_id,  # type: ignore[attr-defined]
+        store=StoreInfo(id=store.id, name=store.name, chain=store.chain) if store else None,
+        transaction_date=transaction_date.isoformat() if transaction_date else None,
+        currency=r.currency,  # type: ignore[attr-defined]
+        total=r.total,  # type: ignore[attr-defined]
+        source=r.source,  # type: ignore[attr-defined]
+        status=r.status,  # type: ignore[attr-defined]
+        thumbnail_path=r.thumbnail_path,  # type: ignore[attr-defined]
+        page_count=r.page_count,  # type: ignore[attr-defined]
+        created_at=r.created_at.isoformat(),  # type: ignore[attr-defined]
+    )
+
+
 class ReceiptDetail(BaseModel):
     id: str
     user_id: str

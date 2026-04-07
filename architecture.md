@@ -68,6 +68,8 @@ ledgerlens2/
 │   │   │   ├── database.py            # engine, session factory, Base, get_db
 │   │   │   ├── dependencies.py        # FastAPI dependency injection (get_current_user, etc.)
 │   │   │   ├── exceptions.py          # Domain exception hierarchy
+│   │   │   ├── pagination.py          # paginate() — shared async count+offset+limit helper
+│   │   │   ├── rate_limit.py          # Redis sliding window rate limiter (sorted sets)
 │   │   │   ├── security.py            # password hashing, token serialiser
 │   │   │   └── time.py                # utc_now() — single source of truth
 │   │   ├── models/
@@ -790,6 +792,8 @@ Regex-based fallback when LLM fails:
 
 Scoring: `max(token_sort_ratio, partial_ratio)` via RapidFuzz.
 
+**N+1 elimination**: `MatchingService` holds an instance-level `_item_cache`. The first call to `find_or_create_canonical_item()` loads all canonical items once (`list_all()`); subsequent calls within the same service lifetime reuse the cache. Newly created items are appended so the next iteration can match against them without a second DB round-trip.
+
 **Auto-reject on rename**: When a user renames a canonical item (via `PATCH /items/:id`), `ItemService.update()` calls `MatchSuggestionRepository.reject_stale_for_canonical()`. This bulk-rejects any pending `MatchSuggestion` rows whose line item is already linked to that canonical item but the suggestion points to a different canonical item — preventing stale suggestions from silently overwriting user corrections.
 
 ### Normalisation
@@ -924,6 +928,10 @@ Path safety: `storage.get_receipt_path()` validates paths fall under `DATA_DIR`.
 
 1. `feded377c21d` — Initial schema (all 10 tables)
 2. `36e5776eb341` — Drop `is_default` from `model_configs`
+3. `bb82796a7960` — Add store matching tables (`store_aliases`, `store_merge_suggestions`), enhanced `line_items` columns (`raw_name`, `discount`, `is_refund`, `tax_code`, `weight_qty`)
+4. `b644feb16736` — Add `supports_vision` to `model_configs`
+5. `c11f3c9ec32f` — Change `api_key` column to Text (for encrypted key storage)
+6. `7784f5dcc4a9` — Fix boolean server defaults (`false` for `is_refund`, `is_verified`, etc.)
 
 ### SQLite Pragmas
 

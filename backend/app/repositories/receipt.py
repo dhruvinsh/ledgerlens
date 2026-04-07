@@ -4,6 +4,8 @@ from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.core.pagination import paginate
+
 from app.models.line_item import LineItem
 from app.models.receipt import Receipt
 from app.models.store import Store
@@ -70,10 +72,6 @@ class ReceiptRepository:
         if date_to:
             query = query.where(Receipt.transaction_date <= date.fromisoformat(date_to))
 
-        # Count
-        count_query = select(func.count()).select_from(query.subquery())
-        total = (await self.db.execute(count_query)).scalar() or 0
-
         # Sort — whitelist prevents arbitrary attribute access on the model
         _SORT_COLUMNS = {
             "created_at": Receipt.created_at,
@@ -86,12 +84,7 @@ class ReceiptRepository:
         else:
             query = query.order_by(sort_col.desc())
 
-        # Paginate
-        query = query.offset((page - 1) * per_page).limit(per_page)
-        result = await self.db.execute(query)
-        receipts = list(result.unique().scalars().all())
-
-        return receipts, total
+        return await paginate(self.db, query, page, per_page)
 
     async def create(self, receipt: Receipt) -> Receipt:
         self.db.add(receipt)

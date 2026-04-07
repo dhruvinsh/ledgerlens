@@ -25,24 +25,18 @@ class MatchSuggestionRepository:
     async def list_pending(
         self, page: int = 1, per_page: int = 20
     ) -> tuple[list[MatchSuggestion], int]:
-        from sqlalchemy import func
-
-        base = select(MatchSuggestion).where(MatchSuggestion.status == "pending")
-
-        count_q = select(func.count()).select_from(base.subquery())
-        total = (await self.db.execute(count_q)).scalar() or 0
+        from app.core.pagination import paginate
 
         query = (
-            base.options(
+            select(MatchSuggestion)
+            .where(MatchSuggestion.status == "pending")
+            .options(
                 joinedload(MatchSuggestion.canonical_item),
                 joinedload(MatchSuggestion.line_item),
             )
             .order_by(MatchSuggestion.confidence.desc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
         )
-        result = await self.db.execute(query)
-        return list(result.unique().scalars().all()), total
+        return await paginate(self.db, query, page, per_page)
 
     async def list_for_item(self, canonical_item_id: str) -> list[MatchSuggestion]:
         result = await self.db.execute(
