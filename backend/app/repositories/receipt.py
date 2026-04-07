@@ -74,8 +74,13 @@ class ReceiptRepository:
         count_query = select(func.count()).select_from(query.subquery())
         total = (await self.db.execute(count_query)).scalar() or 0
 
-        # Sort
-        sort_col = getattr(Receipt, sort_by, Receipt.created_at)
+        # Sort — whitelist prevents arbitrary attribute access on the model
+        _SORT_COLUMNS = {
+            "created_at": Receipt.created_at,
+            "transaction_date": Receipt.transaction_date,
+            "total": Receipt.total,
+        }
+        sort_col = _SORT_COLUMNS.get(sort_by, Receipt.created_at)
         if sort_dir == "asc":
             query = query.order_by(sort_col.asc())
         else:

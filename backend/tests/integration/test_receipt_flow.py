@@ -132,6 +132,28 @@ async def test_upload_receipt_pdf(auth_client: httpx.AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_sort_receipts_by_valid_columns(auth_client: httpx.AsyncClient):
+    """Valid sort_by values are accepted and return results."""
+    for col in ("created_at", "transaction_date", "total"):
+        for direction in ("asc", "desc"):
+            resp = await auth_client.get(f"/api/v1/receipts?sort_by={col}&sort_dir={direction}")
+            assert resp.status_code == 200, f"failed for sort_by={col} sort_dir={direction}"
+
+
+@pytest.mark.asyncio
+async def test_sort_receipts_invalid_sort_by_falls_back_to_default(auth_client: httpx.AsyncClient):
+    """An unrecognised sort_by value silently falls back to created_at — no server error."""
+    await auth_client.post("/api/v1/receipts/manual", json={"total": 100, "line_items": []})
+
+    resp = await auth_client.get("/api/v1/receipts?sort_by=password_hash")
+    assert resp.status_code == 200
+    assert "items" in resp.json()
+
+    resp = await auth_client.get("/api/v1/receipts?sort_by=__class__")
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_filter_receipts_by_status(auth_client: httpx.AsyncClient):
     await auth_client.post(
         "/api/v1/receipts/manual",
