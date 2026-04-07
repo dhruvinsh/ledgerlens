@@ -15,6 +15,17 @@ class MatchingService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.item_repo = CanonicalItemRepository(db)
+        self._item_cache: list[CanonicalItem] | None = None
+
+    async def _get_all_items(self) -> list[CanonicalItem]:
+        """Load all canonical items once per service instance and cache in memory.
+
+        Callers that process multiple line items in a loop share one DB round-trip.
+        New items created mid-loop are appended so subsequent iterations see them.
+        """
+        if self._item_cache is None:
+            self._item_cache = await self.item_repo.list_all()
+        return self._item_cache
 
     async def find_or_create_canonical_item(
         self,
@@ -33,23 +44,24 @@ class MatchingService:
         Returns the matched/created CanonicalItem.
         """
         normalized = normalize_item_name(raw_name)
+        lower_normalized = normalized.lower()
+        all_items = await self._get_all_items()
 
-        # 1. Exact name match
-        existing = await self.item_repo.get_by_name(normalized)
-        if existing:
-            if line_item:
-                line_item.canonical_item_id = existing.id
-            return existing
+        # 1. Exact name match (in-memory)
+        for item in all_items:
+            if item.name.lower() == lower_normalized:
+                if line_item:
+                    line_item.canonical_item_id = item.id
+                return item
 
-        # 2. Exact alias match
-        by_alias = await self.item_repo.get_by_alias(normalized)
-        if by_alias:
-            if line_item:
-                line_item.canonical_item_id = by_alias.id
-            return by_alias
+        # 2. Exact alias match (in-memory)
+        for item in all_items:
+            if any(a.lower() == lower_normalized for a in (item.aliases or [])):
+                if line_item:
+                    line_item.canonical_item_id = item.id
+                return item
 
-        # 3 & 4. Fuzzy matching
-        all_items = await self.item_repo.list_all()
+        # 3 & 4. Fuzzy matching (in-memory)
         best_score = 0.0
         best_item: CanonicalItem | None = None
 
@@ -68,9 +80,10 @@ class MatchingService:
             # Auto-link and add as alias
             if line_item:
                 line_item.canonical_item_id = best_item.id
-            if normalized.lower() not in [a.lower() for a in (best_item.aliases or [])]:
+            if lower_normalized not in [a.lower() for a in (best_item.aliases or [])]:
                 best_item.aliases = (best_item.aliases or []) + [normalized]
                 await self.item_repo.update(best_item)
+                # best_item is the same object in the cache — alias update is already reflected
             return best_item
 
         if (
@@ -93,6 +106,8 @@ class MatchingService:
         # 5. No match — create new canonical item
         new_item = CanonicalItem(name=normalized)
         await self.item_repo.create(new_item)
+        # Append to cache so the next iteration in this batch sees the new item
+        all_items.append(new_item)
         if line_item and not line_item.canonical_item_id:
             line_item.canonical_item_id = new_item.id
         return new_item
