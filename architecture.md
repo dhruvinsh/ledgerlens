@@ -838,6 +838,7 @@ Rate limit exceeded returns HTTP 429 with `Retry-After` header.
 
 - **Admin**: Required for `/admin/*` endpoints
 - **Owner**: Receipt update/delete requires ownership; household management requires owner
+- **Line items**: `PATCH /line-items/{id}` joins through the parent receipt and applies `receipt_visibility()` — a user can only edit line items on receipts they can see. Returns 404 (not 403) on access denial to prevent ID enumeration.
 
 ### Household Invites
 
