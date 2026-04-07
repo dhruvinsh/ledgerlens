@@ -1,6 +1,6 @@
 import { lazy } from "react";
 import { createBrowserRouter, Navigate } from "react-router";
-import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
+import { AdminRoute, ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import { RouteError } from "@/components/layout/RouteError";
 
@@ -46,8 +46,14 @@ export const router = createBrowserRouter([
           { path: "/stores/:id", element: <StoreDetail /> },
           { path: "/settings", element: <Settings /> },
           { path: "/settings/household", element: <HouseholdSettings /> },
-          { path: "/admin/models", element: <AdminModels /> },
           { path: "/join/:token", element: <JoinHousehold /> },
+        ],
+      },
+      {
+        element: <AdminRoute />,
+        errorElement: <RouteError />,
+        children: [
+          { path: "/admin/models", element: <AdminModels /> },
         ],
       },
     ],

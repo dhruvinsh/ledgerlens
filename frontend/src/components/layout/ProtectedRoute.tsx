@@ -24,3 +24,21 @@ export function ProtectedRoute() {
 
   return <Outlet />;
 }
+
+export function AdminRoute() {
+  const { user, loading } = useAppStore();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Spinner className="h-8 w-8" />
+      </div>
+    );
+  }
+
+  if (!user || user.role !== "admin") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Outlet />;
+}

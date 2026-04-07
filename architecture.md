@@ -146,7 +146,7 @@ ledgerlens2/
 │   │   ├── index.css
 │   │   ├── router.tsx
 │   │   ├── components/
-│   │   │   ├── layout/                # AppShell, ProtectedRoute
+│   │   │   ├── layout/                # AppShell, ProtectedRoute, AdminRoute
 │   │   │   ├── receipt/               # EnrichedLineItem, EditLineItemDialog
 │   │   │   ├── product/               # Product display components
 │   │   │   └── ui/                    # Card, Button, Input, Dialog, Badge, etc.
@@ -426,8 +426,9 @@ serialise responses via Pydantic schemas. No business logic lives here.
     /review
     /settings
     /settings/household
-    /admin/models
     /join/:token
+  <AdminRoute>     → redirects to /dashboard if user.role !== "admin"
+    /admin/models
 ```
 
 All page components are lazy-loaded via `React.lazy`.
