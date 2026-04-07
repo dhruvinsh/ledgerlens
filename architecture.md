@@ -547,11 +547,25 @@ FROM python:3.13-slim-bookworm
 ### Nginx Reverse Proxy
 
 ```
-location /          → SPA (try_files → /index.html)
-location /api/      → proxy to 127.0.0.1:8000
-location /ws/       → WebSocket upgrade to 127.0.0.1:8000
-location /files/    → proxy to 127.0.0.1:8000
+location /                      → SPA (try_files → /index.html)
+location /api/v1/receipts/batch → proxy, rate limit: api zone (burst 5)
+location /api/v1/auth/          → proxy, rate limit: auth zone (5 r/s, burst 10)
+location /api/                  → proxy, rate limit: api zone (30 r/s, burst 60)
+location /ws/                   → WebSocket upgrade, 3600s timeouts
+location /files/                → proxy to 127.0.0.1:8000
 ```
+
+**Security headers** (all responses, including static files):
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `server_tokens off` (hides nginx version)
+- Note: HSTS is intentionally omitted — add it at the upstream HTTPS terminator
+
+**Rate limiting zones** (defined at `http` context via `conf.d/` include):
+- `api`: 30 r/s per IP, 429 on excess — covers all `/api/` traffic
+- `auth`: 5 r/s per IP, 429 on excess — stricter zone for `/api/v1/auth/`
+- `perip` connection limit: 50 concurrent connections per IP (slowloris protection)
 
 ### Entrypoint
 
