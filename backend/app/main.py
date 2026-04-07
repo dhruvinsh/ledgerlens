@@ -16,8 +16,10 @@ from app.core.exceptions import (
     ConflictError,
     ForbiddenError,
     NotFoundError,
+    RateLimitExceededError,
     ValidationError,
 )
+from app.core.rate_limit import close_redis
 from app.middleware.auth import AuthMiddleware
 from app.middleware.security import SecurityMiddleware
 from app.routers import (
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await retroactive_task
     with suppress(asyncio.CancelledError):
         await ws_bridge_task
+    await close_redis()
 
 
 app = FastAPI(title="LedgerLens API", lifespan=lifespan)
@@ -90,6 +93,15 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
             status_code = code
             break
     return JSONResponse(status_code=status_code, content={"detail": exc.message})
+
+
+@app.exception_handler(RateLimitExceededError)
+async def rate_limit_handler(request: Request, exc: RateLimitExceededError) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"detail": exc.message},
+        headers={"Retry-After": str(exc.retry_after)},
+    )
 
 
 # API Routers

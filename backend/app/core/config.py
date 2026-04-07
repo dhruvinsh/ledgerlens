@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     # Auth
     SECRET_KEY: str = "change-me"
 
+    # Rate limiting (per IP)
+    RATE_LIMIT_LOGIN_MAX: int = 5
+    RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = 900
+    RATE_LIMIT_REGISTER_MAX: int = 3
+    RATE_LIMIT_REGISTER_WINDOW_SECONDS: int = 900
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000

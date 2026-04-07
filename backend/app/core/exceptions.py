@@ -59,5 +59,11 @@ class InvalidCredentialsError(AuthenticationError):
     pass
 
 
+class RateLimitExceededError(AppError):
+    def __init__(self, retry_after: int = 0):
+        super().__init__("Too many requests", code="RATE_LIMITED")
+        self.retry_after = retry_after
+
+
 class OCRProcessingError(AppError):
     pass

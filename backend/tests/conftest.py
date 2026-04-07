@@ -10,14 +10,24 @@ from app.core.database import Base, get_db
 from app.main import app
 
 
+async def _noop_rate_limit(key: str, max_attempts: int, window_seconds: int) -> tuple[bool, int, int]:
+    return True, max_attempts, 0
+
+
 @pytest.fixture(autouse=True)
-def _mock_celery_task():
-    """Prevent Celery tasks from hitting a real Redis broker in tests."""
+def _mock_external_services():
+    """Prevent Celery tasks and rate limiting from hitting real Redis in tests."""
     mock_result = MagicMock()
     mock_result.id = "test-celery-task-id"
-    with patch(
-        "app.tasks.receipt_processing.process_receipt_task.delay",
-        return_value=mock_result,
+    with (
+        patch(
+            "app.tasks.receipt_processing.process_receipt_task.delay",
+            return_value=mock_result,
+        ),
+        patch(
+            "app.routers.auth.check_rate_limit",
+            side_effect=_noop_rate_limit,
+        ),
     ):
         yield
 

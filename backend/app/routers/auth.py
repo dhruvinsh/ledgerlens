@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,6 +8,8 @@ from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, UserResponse
 from app.services.auth import SESSION_MAX_AGE_DAYS, AuthService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -35,6 +39,21 @@ def _to_user_response(user: User) -> UserResponse:
     )
 
 
+async def _enforce_rate_limit(request: Request, key_prefix: str, max_attempts: int, window: int) -> None:
+    """Check rate limit, fail open if Redis is unavailable."""
+    try:
+        ip = request.client.host if request.client else "unknown"
+        allowed, _, retry_after = await check_rate_limit(
+            f"{key_prefix}:{ip}", max_attempts, window
+        )
+        if not allowed:
+            raise RateLimitExceededError(retry_after=retry_after)
+    except RateLimitExceededError:
+        raise
+    except Exception:
+        logger.warning("Rate limit check failed (Redis unavailable?), allowing request", exc_info=True)
+
+
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(
     body: RegisterRequest,
@@ -42,6 +61,10 @@ async def register(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
+    await _enforce_rate_limit(
+        request, "rl:register",
+        settings.RATE_LIMIT_REGISTER_MAX, settings.RATE_LIMIT_REGISTER_WINDOW_SECONDS,
+    )
     svc = AuthService(db)
     user, token = await svc.register(
         email=body.email,
@@ -61,6 +84,10 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
+    await _enforce_rate_limit(
+        request, "rl:login",
+        settings.RATE_LIMIT_LOGIN_MAX, settings.RATE_LIMIT_LOGIN_WINDOW_SECONDS,
+    )
     svc = AuthService(db)
     user, token = await svc.login(
         email=body.email,
