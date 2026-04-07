@@ -20,7 +20,7 @@ umask "$UMASK"
 
 # ── Ensure data directory exists and is owned by appuser ────
 mkdir -p "$DATA_DIR"
-chown "$PUID:$PGID" "$DATA_DIR"
+chown -R "$PUID:$PGID" "$DATA_DIR"
 
 # ── Run migrations as appuser ───────────────────────────────
 cd /app/backend
