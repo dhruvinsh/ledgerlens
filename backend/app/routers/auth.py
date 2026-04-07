@@ -3,8 +3,11 @@ import logging
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.exceptions import RateLimitExceededError
+from app.core.rate_limit import check_rate_limit
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, UserResponse
 from app.services.auth import SESSION_MAX_AGE_DAYS, AuthService
@@ -16,14 +19,26 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 COOKIE_MAX_AGE = SESSION_MAX_AGE_DAYS * 24 * 3600
 
 
-def _set_session_cookie(response: Response, token: str) -> None:
+def _resolve_cookie_secure(request: Request) -> bool:
+    mode = settings.COOKIE_SECURE.lower()
+    if mode == "true":
+        return True
+    if mode == "false":
+        return False
+    # "auto" — secure when request arrived over HTTPS (direct or via reverse proxy)
+    if request.url.scheme == "https":
+        return True
+    return request.headers.get("x-forwarded-proto", "").lower() == "https"
+
+
+def _set_session_cookie(response: Response, token: str, *, secure: bool) -> None:
     response.set_cookie(
         key="session_id",
         value=token,
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=False,  # Set True behind HTTPS in production
+        secure=secure,
     )
 
 
@@ -73,7 +88,7 @@ async def register(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    _set_session_cookie(response, token)
+    _set_session_cookie(response, token, secure=_resolve_cookie_secure(request))
     return _to_user_response(user)
 
 
@@ -95,7 +110,7 @@ async def login(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    _set_session_cookie(response, token)
+    _set_session_cookie(response, token, secure=_resolve_cookie_secure(request))
     return _to_user_response(user)
 
 

@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key-minimum-32-characters!!")
+
 from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock, patch
 

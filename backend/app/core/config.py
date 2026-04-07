@@ -1,4 +1,11 @@
+import logging
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INSECURE_SECRET_KEYS = {"change-me", "change-me-to-a-random-string", ""}
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -15,6 +22,7 @@ class Settings(BaseSettings):
 
     # Auth
     SECRET_KEY: str = "change-me"
+    COOKIE_SECURE: str = "auto"
 
     # Rate limiting (per IP)
     RATE_LIMIT_LOGIN_MAX: int = 5
@@ -53,6 +61,25 @@ class Settings(BaseSettings):
     TESSERACT_DPI: int = 300
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @model_validator(mode="after")
+    def _validate_settings(self) -> "Settings":
+        if self.SECRET_KEY in _INSECURE_SECRET_KEYS:
+            raise ValueError(
+                "SECRET_KEY is not set or uses an insecure default. "
+                "Generate a secure key with:\n\n"
+                '  python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
+        if len(self.SECRET_KEY) < 32:
+            logger.warning(
+                "SECRET_KEY is shorter than 32 characters — consider using a longer key"
+            )
+        if self.COOKIE_SECURE.lower() not in {"true", "false", "auto"}:
+            raise ValueError(
+                'COOKIE_SECURE must be "auto", "true", or "false" '
+                f'(got "{self.COOKIE_SECURE}")'
+            )
+        return self
 
 
 settings = Settings()

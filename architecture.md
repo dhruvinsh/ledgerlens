@@ -808,6 +808,28 @@ Address-aware: same chain + different addresses → separate stores (shared chai
 3. **Logout**: delete session row → delete cookie
 4. **`GET /auth/me`**: validate session → return user
 
+### SECRET_KEY Validation
+
+The app refuses to start if `SECRET_KEY` is a known insecure default (`"change-me"`, `"change-me-to-a-random-string"`, or empty). A warning is logged if the key is shorter than 32 characters. This is enforced via a pydantic `model_validator` on `Settings`.
+
+### Cookie Security
+
+The `COOKIE_SECURE` setting controls the `secure` flag on session cookies:
+- `"auto"` (default): secure when `X-Forwarded-Proto: https` or direct HTTPS
+- `"true"`: always set secure flag
+- `"false"`: never set secure flag (for HTTP-only setups behind a reverse proxy)
+
+### Rate Limiting
+
+Login and register endpoints are protected by a Redis-backed sliding window rate limiter (`core/rate_limit.py`). Uses Redis sorted sets via the existing Celery broker connection. **Fail-open**: if Redis is unavailable, requests are allowed through with a warning logged.
+
+| Endpoint | Default Limit | Window | Config |
+|----------|---------------|--------|--------|
+| `/auth/login` | 5 attempts/IP | 15 min | `RATE_LIMIT_LOGIN_MAX`, `RATE_LIMIT_LOGIN_WINDOW_SECONDS` |
+| `/auth/register` | 3 attempts/IP | 15 min | `RATE_LIMIT_REGISTER_MAX`, `RATE_LIMIT_REGISTER_WINDOW_SECONDS` |
+
+Rate limit exceeded returns HTTP 429 with `Retry-After` header.
+
 ### Middleware Gate
 
 `AuthMiddleware` requires `session_id` on all `/api/*` except `/api/v1/auth/*`, `/docs`, `/openapi.json`.
@@ -946,7 +968,12 @@ PRAGMA synchronous=NORMAL;
 | `LLM_API_KEY` | `""` | API key (optional for Ollama) |
 | `LLM_TIMEOUT_SECONDS` | `30` | LLM request timeout |
 | `LLM_MAX_RETRIES` | `1` | LLM retry count |
-| `SECRET_KEY` | `change-me` | Session signing key |
+| `SECRET_KEY` | *(required)* | Session signing & encryption key |
+| `COOKIE_SECURE` | `auto` | Cookie secure flag: `auto`, `true`, `false` |
+| `RATE_LIMIT_LOGIN_MAX` | `5` | Max login attempts per IP per window |
+| `RATE_LIMIT_LOGIN_WINDOW_SECONDS` | `900` | Login rate limit window |
+| `RATE_LIMIT_REGISTER_MAX` | `3` | Max register attempts per IP per window |
+| `RATE_LIMIT_REGISTER_WINDOW_SECONDS` | `900` | Register rate limit window |
 | `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Redis broker URL |
 | `TASK_SOFT_TIME_LIMIT` | `300` | Celery soft timeout (seconds) |
 | `TASK_HARD_TIME_LIMIT` | `360` | Celery hard timeout (seconds) |
