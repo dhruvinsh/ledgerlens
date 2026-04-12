@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
-import { ArrowLeft, RotateCw, Trash2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, RotateCw, Trash2, AlertTriangle, Download, ChevronDown, FileDown, FileJson } from "lucide-react";
 import { useReceipt, useDeleteReceipt, useReprocessReceipt } from "@/hooks/useReceipts";
 import { useToastStore } from "@/stores/toastStore";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,19 @@ export default function ReceiptDetail() {
   const addToast = useToastStore((s) => s.addToast);
   const [editingItem, setEditingItem] = useState<LineItem | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const downloadRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!downloadOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (downloadRef.current && !downloadRef.current.contains(e.target as Node)) {
+        setDownloadOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [downloadOpen]);
 
   if (isLoading) return <Spinner className="mt-20" />;
   if (!receipt) return <p className="p-6 text-text-muted">Receipt not found.</p>;
@@ -60,6 +73,33 @@ export default function ReceiptDetail() {
     await api.patch(`/line-items/${editingItem.id}`, values);
     setEditingItem(null);
     refetch();
+  };
+
+  const handleDownloadOriginal = () => {
+    if (!receipt.file_path) return;
+    const ext = receipt.file_path.split(".").pop() ?? "file";
+    const storeName = receipt.store?.name ?? "receipt";
+    const date = receipt.transaction_date ?? receipt.created_at.slice(0, 10);
+    const filename = `${storeName}-${date}.${ext}`.toLowerCase().replace(/\s+/g, "-");
+    const a = document.createElement("a");
+    a.href = `/files/${receipt.file_path}`;
+    a.download = filename;
+    a.click();
+    setDownloadOpen(false);
+  };
+
+  const handleDownloadJson = () => {
+    const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const storeName = receipt.store?.name ?? "receipt";
+    const date = receipt.transaction_date ?? receipt.created_at.slice(0, 10);
+    const filename = `${storeName}-${date}.json`.toLowerCase().replace(/\s+/g, "-");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    setDownloadOpen(false);
   };
 
   return (
@@ -137,6 +177,48 @@ export default function ReceiptDetail() {
 
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
+          {/* Download dropdown */}
+          <div className="relative" ref={downloadRef}>
+            <Button variant="outline" size="sm" onClick={() => setDownloadOpen((o) => !o)}>
+              <Download size={14} /> Download <ChevronDown size={12} className={`transition-transform duration-150 ${downloadOpen ? "rotate-180" : ""}`} />
+            </Button>
+            {downloadOpen && (
+              <div className="absolute left-0 top-full z-20 mt-1 min-w-[188px] rounded-sm border border-border bg-surface shadow-lg">
+                {receipt.file_path ? (
+                  <button
+                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs hover:bg-accent/5"
+                    onClick={handleDownloadOriginal}
+                  >
+                    <FileDown size={13} className="shrink-0 text-text-muted" />
+                    <span>
+                      <span className="block font-medium">Original file</span>
+                      <span className="text-text-muted">.{receipt.file_path.split(".").pop()?.toUpperCase()}</span>
+                    </span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2.5 px-3 py-2.5 text-xs text-text-muted opacity-50 cursor-not-allowed">
+                    <FileDown size={13} className="shrink-0" />
+                    <span>
+                      <span className="block font-medium">Original file</span>
+                      <span>No file attached</span>
+                    </span>
+                  </div>
+                )}
+                <div className="mx-3 border-t border-border" />
+                <button
+                  className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs hover:bg-accent/5"
+                  onClick={handleDownloadJson}
+                >
+                  <FileJson size={13} className="shrink-0 text-text-muted" />
+                  <span>
+                    <span className="block font-medium">JSON data</span>
+                    <span className="text-text-muted">All fields + line items</span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
           {receipt.file_path && (
             <Button variant="outline" size="sm" onClick={handleReprocess} disabled={reprocess.isPending}>
               <RotateCw size={14} /> {reprocess.isPending ? "Reprocessing..." : "Reprocess"}

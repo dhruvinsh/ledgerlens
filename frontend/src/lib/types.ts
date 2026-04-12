@@ -51,6 +51,9 @@ export interface Receipt {
   subtotal: number | null;
   tax: number | null;
   total: number | null;
+  discount: number | null;
+  payment_method: string | null;
+  is_refund: boolean;
   source: "camera" | "upload" | "manual";
   status: ReceiptStatus;
   file_path: string | null;
@@ -88,9 +91,14 @@ export interface LineItem {
   canonical_item_id: string | null;
   canonical_item: CanonicalItemSummary | null;
   name: string;
+  raw_name: string | null;
   quantity: number;
   unit_price: number | null;
   total_price: number | null;
+  discount: number | null;
+  is_refund: boolean;
+  tax_code: string | null;
+  weight_qty: string | null;
   confidence: number | null;
   position: number;
   is_corrected: boolean;
