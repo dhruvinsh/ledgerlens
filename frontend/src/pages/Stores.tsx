@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Search, MapPin, Store as StoreIcon, Receipt } from "lucide-react";
 import { useStores } from "@/hooks/useStores";
@@ -8,10 +8,51 @@ import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/ui/pagination";
 import { Spinner } from "@/components/ui/spinner";
 
+const PER_PAGE = 20;
+const SEARCH_DEBOUNCE_MS = 250;
+
 export default function Stores() {
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const { data, isLoading } = useStores({ search: search || undefined, page, per_page: 20 });
+  const [params, setParams] = useSearchParams();
+  const urlSearch = params.get("q") ?? "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const [search, setSearch] = useState(urlSearch);
+
+  const { data, isLoading } = useStores({
+    search: urlSearch || undefined,
+    page,
+    per_page: PER_PAGE,
+  });
+
+  const update = useCallback(
+    (next: { q?: string; page?: number }) => {
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next.q !== undefined) {
+            if (next.q) p.set("q", next.q);
+            else p.delete("q");
+          }
+          if (next.page !== undefined) {
+            if (next.page <= 1) p.delete("page");
+            else p.set("page", String(next.page));
+          }
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
+
+  useEffect(() => {
+    setSearch(urlSearch);
+  }, [urlSearch]);
+
+  useEffect(() => {
+    if (search === urlSearch) return;
+    const t = setTimeout(() => update({ q: search, page: 1 }), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [search, urlSearch, update]);
 
   return (
     <div className="space-y-6 p-6 pb-24 md:pb-6">
@@ -23,7 +64,7 @@ export default function Stores() {
           className="w-full rounded-sm border border-border bg-surface py-2 pl-9 pr-3 text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30"
           placeholder="Search stores..."
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
@@ -81,8 +122,8 @@ export default function Stores() {
           </div>
           <Pagination
             page={page}
-            totalPages={Math.ceil((data.total ?? 0) / 20)}
-            onPageChange={setPage}
+            totalPages={Math.ceil((data.total ?? 0) / PER_PAGE)}
+            onPageChange={(p) => update({ page: p })}
           />
         </>
       )}

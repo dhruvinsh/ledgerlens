@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Plus, Calendar, Store as StoreIcon } from "lucide-react";
 import { useReceipts } from "@/hooks/useReceipts";
@@ -10,12 +9,37 @@ import { Pagination } from "@/components/ui/pagination";
 import { Spinner } from "@/components/ui/spinner";
 import { formatMoney } from "@/lib/money";
 
-export default function Receipts() {
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("");
-  const { data, isLoading } = useReceipts({ page, per_page: 20, status: status || undefined });
+const PER_PAGE = 20;
+const STATUSES = ["", "pending", "processing", "processed", "reviewed", "failed"];
 
-  const statuses = ["", "pending", "processing", "processed", "reviewed", "failed"];
+export default function Receipts() {
+  const [params, setParams] = useSearchParams();
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const status = params.get("status") ?? "";
+
+  const { data, isLoading } = useReceipts({
+    page,
+    per_page: PER_PAGE,
+    status: status || undefined,
+  });
+
+  const update = (next: { page?: number; status?: string }) => {
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next.page !== undefined) {
+          if (next.page <= 1) p.delete("page");
+          else p.set("page", String(next.page));
+        }
+        if (next.status !== undefined) {
+          if (next.status) p.set("status", next.status);
+          else p.delete("status");
+        }
+        return p;
+      },
+      { replace: true },
+    );
+  };
 
   return (
     <div className="space-y-6 p-6 pb-24 md:pb-6">
@@ -33,10 +57,10 @@ export default function Receipts() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
-        {statuses.map((s) => (
+        {STATUSES.map((s) => (
           <button
             key={s}
-            onClick={() => { setStatus(s); setPage(1); }}
+            onClick={() => update({ status: s, page: 1 })}
             className={`rounded-sm px-3 py-1 text-xs font-medium transition-colors ${
               status === s
                 ? "bg-accent text-accent-foreground"
@@ -96,8 +120,8 @@ export default function Receipts() {
           </div>
           <Pagination
             page={page}
-            totalPages={Math.ceil((data.total ?? 0) / 20)}
-            onPageChange={setPage}
+            totalPages={Math.ceil((data.total ?? 0) / PER_PAGE)}
+            onPageChange={(p) => update({ page: p })}
           />
         </>
       )}

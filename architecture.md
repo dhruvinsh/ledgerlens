@@ -435,6 +435,14 @@ serialise responses via Pydantic schemas. No business logic lives here.
 
 All page components are lazy-loaded via `React.lazy`.
 
+### List-Page State & Scroll Restoration
+
+List pages (Receipts, Items, Stores, Review) store pagination, filters, and search in URL search params via `useSearchParams`, updated with `{ replace: true }` so filter clicks don't clutter history. Params used: `page`, `status` (Receipts), `q` (Items, Stores), `tab` / `ppage` / `spage` (Review). Detail navigation is a standard push, so browser back / mobile edge-swipe restores the list URL — and therefore the filter/page state — automatically. Search inputs (`Items`, `Stores`) keep a local `useState` for snappy typing and debounce the URL write by 250 ms to avoid one `location.key` churn per keystroke; the input syncs back to URL on external changes (POP, back/forward).
+
+`useScrollRestoration` (applied once in `AppShell` to the `<main>` scroll container) saves `scrollTop` to `sessionStorage` once per animation frame (rAF-deduped: the first scroll in a frame schedules the write, subsequent scrolls in the same frame are ignored), keyed by `location.key + pathname + search`. On location change it restores the saved position, polling every 50 ms for up to 2 s so async-loaded content (TanStack Query) has time to render tall enough to accommodate the target. The poll also bails early if `scrollHeight` stays stable for 3 consecutive ticks (~150 ms) and the max scrollable distance still can't fit the target — the list is genuinely shorter now (e.g. after a delete) so further retries are wasted. Programmatic restores are suppressed from the scroll listener via a frame-scoped counter so they don't overwrite the saved value before content finishes laying out. The composite key means POP restores, replace-based filter changes scroll to top, and fresh pushes start at top.
+
+react-router assigns `location.key === "default"` to the first entry of a session. To avoid collisions between two bookmark visits landing on the same URL, the hook substitutes `default-<uuid>` when it sees `"default"`, with the UUID persisted once per tab under `ll-session-id`. Since `location.key` changes on every navigation (including each replace-based filter update), entry count is bounded by an LRU cap of 50 keys tracked in `ll-scroll-index`. Writes fall back to dropping the oldest entry on `QuotaExceededError` and otherwise degrade silently — scroll restoration is best-effort.
+
 ### Navigation
 
 **Desktop sidebar** (7 items): Dashboard, Receipts, Review, Products, Stores, Prices, Settings

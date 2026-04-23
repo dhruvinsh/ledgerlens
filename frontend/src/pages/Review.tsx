@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Check,
@@ -250,13 +251,43 @@ function StoreMergeCard({
 // ── Main Review Page ──
 
 export default function Review() {
-  const [tab, setTab] = useState<Tab>("products");
-  const [productPage, setProductPage] = useState(1);
-  const [storePage, setStorePage] = useState(1);
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get("tab") === "stores" ? "stores" : "products";
+  const productPage = Math.max(1, Number(params.get("ppage")) || 1);
+  const storePage = Math.max(1, Number(params.get("spage")) || 1);
+
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const addToast = useToastStore((s) => s.addToast);
+
+  const update = (next: { tab?: Tab; ppage?: number; spage?: number }) => {
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next.tab !== undefined) {
+          if (next.tab === "products") p.delete("tab");
+          else p.set("tab", next.tab);
+        }
+        if (next.ppage !== undefined) {
+          if (next.ppage <= 1) p.delete("ppage");
+          else p.set("ppage", String(next.ppage));
+        }
+        if (next.spage !== undefined) {
+          if (next.spage <= 1) p.delete("spage");
+          else p.set("spage", String(next.spage));
+        }
+        return p;
+      },
+      { replace: true },
+    );
+  };
+
+  const switchTab = (t: Tab) => {
+    if (t === tab) return;
+    setSelected(new Set());
+    update({ tab: t });
+  };
 
   // Product matches
   const { data: productData, isLoading: productsLoading } = useSuggestions(
@@ -396,7 +427,7 @@ export default function Review() {
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-2">
         <button
-          onClick={() => { setTab("products"); setSelected(new Set()); }}
+          onClick={() => switchTab("products")}
           className={`flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors ${
             tab === "products"
               ? "bg-accent/10 text-accent"
@@ -410,7 +441,7 @@ export default function Review() {
           )}
         </button>
         <button
-          onClick={() => { setTab("stores"); setSelected(new Set()); }}
+          onClick={() => switchTab("stores")}
           className={`flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors ${
             tab === "stores"
               ? "bg-accent/10 text-accent"
@@ -500,7 +531,9 @@ export default function Review() {
             totalPages={Math.ceil(
               ((tab === "products" ? productCount : storeCount) || 1) / 20,
             )}
-            onPageChange={tab === "products" ? setProductPage : setStorePage}
+            onPageChange={(p) =>
+              update(tab === "products" ? { ppage: p } : { spage: p })
+            }
           />
         </>
       )}

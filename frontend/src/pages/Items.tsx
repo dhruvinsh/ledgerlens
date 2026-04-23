@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Search, Package, Receipt } from "lucide-react";
 import { useItems } from "@/hooks/useItems";
@@ -7,10 +7,51 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
 import { Spinner } from "@/components/ui/spinner";
 
+const PER_PAGE = 24;
+const SEARCH_DEBOUNCE_MS = 250;
+
 export default function Items() {
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const { data, isLoading } = useItems({ search: search || undefined, page, per_page: 24 });
+  const [params, setParams] = useSearchParams();
+  const urlSearch = params.get("q") ?? "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const [search, setSearch] = useState(urlSearch);
+
+  const { data, isLoading } = useItems({
+    search: urlSearch || undefined,
+    page,
+    per_page: PER_PAGE,
+  });
+
+  const update = useCallback(
+    (next: { q?: string; page?: number }) => {
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next.q !== undefined) {
+            if (next.q) p.set("q", next.q);
+            else p.delete("q");
+          }
+          if (next.page !== undefined) {
+            if (next.page <= 1) p.delete("page");
+            else p.set("page", String(next.page));
+          }
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
+
+  useEffect(() => {
+    setSearch(urlSearch);
+  }, [urlSearch]);
+
+  useEffect(() => {
+    if (search === urlSearch) return;
+    const t = setTimeout(() => update({ q: search, page: 1 }), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [search, urlSearch, update]);
 
   return (
     <div className="space-y-6 p-6 pb-24 md:pb-6">
@@ -22,7 +63,7 @@ export default function Items() {
           className="w-full rounded-sm border border-border bg-surface py-2 pl-9 pr-3 text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30"
           placeholder="Search products..."
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
@@ -30,7 +71,7 @@ export default function Items() {
         <Spinner className="mt-12" />
       ) : !data?.items.length ? (
         <p className="py-16 text-center text-text-muted">
-          {search ? "No products match your search." : "No products yet. Upload a receipt to get started."}
+          {urlSearch ? "No products match your search." : "No products yet. Upload a receipt to get started."}
         </p>
       ) : (
         <>
@@ -81,8 +122,8 @@ export default function Items() {
           </div>
           <Pagination
             page={page}
-            totalPages={Math.ceil((data.total ?? 0) / 24)}
-            onPageChange={setPage}
+            totalPages={Math.ceil((data.total ?? 0) / PER_PAGE)}
+            onPageChange={(p) => update({ page: p })}
           />
         </>
       )}

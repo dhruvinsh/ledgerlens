@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Outlet, NavLink } from "react-router";
 import {
   LayoutDashboard,
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { useJobNotifications } from "@/hooks/useJobNotifications";
 import { useJobUpdates } from "@/hooks/useProcessingJobs";
 import { useReviewCounts } from "@/hooks/useReview";
+import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { wsService } from "@/services/websocket";
 
 const navItems = [
@@ -30,6 +31,9 @@ const navItems = [
 export function AppShell() {
   useJobNotifications();
   useJobUpdates();
+
+  const mainRef = useRef<HTMLElement>(null);
+  useScrollRestoration(mainRef);
 
   const { data: counts } = useReviewCounts();
   const reviewBadge =
@@ -103,7 +107,7 @@ export function AppShell() {
           </NavLink>
         </header>
 
-      <main className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 overflow-y-auto">
         <Suspense
           fallback={
             <div className="flex h-full items-center justify-center">
